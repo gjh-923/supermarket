@@ -407,10 +407,22 @@ async function _apiSyncAll() {
         const allData = await _apiGet('/api/export/all');
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
-            // 服务器数据永远为准（多用户同步核心）
+            // 服务器返回空数组且本地有数据时，保留本地（初始状态或服务器未同步）
+            if (Array.isArray(data) && data.length === 0) {
+                const existing = localStorage.getItem('sms_' + camelKey);
+                if (existing) {
+                    try {
+                        const parsed = JSON.parse(existing);
+                        if (Array.isArray(parsed) && parsed.length > 0) continue;
+                    } catch(e) {}
+                }
+            }
+            // 服务器有数据时，以服务器为准
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
             transformed = _normalizeData(camelKey, transformed);
-            localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
+            if (Array.isArray(transformed) && transformed.length > 0) {
+                localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
+            }
         }
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }

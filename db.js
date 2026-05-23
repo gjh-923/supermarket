@@ -17,6 +17,12 @@ db.pragma('foreign_keys = ON');
 
 function initDatabase() {
   db.exec(`
+    -- JSON数据存储表（直接存前端原始数据，无字段映射问题）
+    CREATE TABLE IF NOT EXISTS data_store (
+      key TEXT PRIMARY KEY,
+      data TEXT DEFAULT '[]'
+    );
+
     -- 用户表
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
