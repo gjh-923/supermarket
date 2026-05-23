@@ -102,7 +102,16 @@ function syncAffectedTablesToDataStore() {
   const ledger = db.prepare('SELECT * FROM finance_ledger ORDER BY id DESC').all();
   upsert.run('financeLedger', JSON.stringify(ledger.map(l => ({
     id: l.id, date: l.date, type: l.type, category: l.category,
-    amount: l.amount, account: l.account, summary: l.summary, voucherNo: l.voucher_no
+    amount: l.amount, account: l.account, summary: l.summary, voucherNo: l.voucher_no,
+    createdAt: l.created_at
+  }))));
+
+  // InventoryRecords
+  const inventoryRecords = db.prepare('SELECT * FROM inventory_records ORDER BY id DESC').all();
+  upsert.run('inventoryRecords', JSON.stringify(inventoryRecords.map(r => ({
+    id: r.id, productId: r.product_id, productName: r.product_name,
+    type: r.type, qty: r.qty, beforeStock: r.before_stock, afterStock: r.after_stock,
+    operator: r.operator, note: r.note, time: r.time, createdAt: r.created_at
   }))));
 
   // MemberPointsRecords

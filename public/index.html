@@ -400,7 +400,7 @@ function _transformKeys(obj) {
 }
 
 // 不需要 camelCase 转换的表（前端已使用 snake_case 键名）
-const _SNAKE_CASE_TABLES = new Set(['schedules', 'attendances']);
+const _SNAKE_CASE_TABLES = new Set(['schedules', 'attendances', 'salaries']);
 
 async function _apiSyncAll() {
     try {
@@ -417,16 +417,23 @@ async function _apiSyncAll() {
                     } catch(e) {}
                 }
             }
-            // 对于有数据的表：合并服务器和本地数据（以服务器为准，但保留本地独有的记录）
+            // 对于有数据的表：ID-based 合并（服务器数据覆盖相同ID的本地记录，保留本地独有记录）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
             if (Array.isArray(data) && data.length > 0) {
                 const existing = localStorage.getItem('sms_' + camelKey);
                 if (existing) {
                     try {
                         const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed) && parsed.length > data.length) {
-                            // 本地数据更多，保留本地数据（用户可能添加了记录）
-                            console.log('保留本地' + camelKey + ': 本地' + parsed.length + '条 > 服务器' + data.length + '条');
+                        if (Array.isArray(parsed)) {
+                            const serverMap = new Map(data.map(d => [d.id, d]));
+                            const localMap = new Map(parsed.map(d => [d.id, d]));
+                            // Server records take precedence for same ID
+                            for (const [id, serverRecord] of serverMap) {
+                                localMap.set(id, serverRecord);
+                            }
+                            const merged = Array.from(localMap.values());
+                            merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+                            localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
                             continue;
                         }
                     } catch(e) {}
@@ -478,22 +485,17 @@ function stopAutoSync() {
 // Lightweight view refresh after sync — updates data without rebuilding DOM
 function _refreshCurrentView() {
     if (!currentPage) return;
-    // POS page: refresh product grid and cart only, preserve member input state
+    // POS page: ONLY refresh product grid with latest prices/stock
+    // Do NOT touch cart (posCart is in-memory, not derived from localStorage)
     if (currentPage === 'sales') {
         try { renderPosProducts(document.getElementById('posSearch')?.value||''); } catch(e) {}
-        try { renderCart(); } catch(e) {}
-        try { updatePosCouponInfo(); } catch(e) {}
         return;
     }
-    // Data table pages: refresh the table data
+    // Data table pages: refresh the table data ONLY if they have refreshCurrentTable
     if (typeof refreshCurrentTable === 'function') {
         try { refreshCurrentTable(); } catch(e) {}
     }
-    // Chart/stats pages: re-run init to rebuild charts with fresh data
-    const initFn = window['init_' + currentPage];
-    if (typeof initFn === 'function') {
-        try { initFn(); } catch(e) {}
-    }
+    // NEVER call init_*() from auto-sync — those reset state and mutate data
 }
 
 function _normalizeData(key, data) {
@@ -2024,6 +2026,7 @@ function getActivePromoPrice(product, qty, isMember) {
                 return Math.round(originalPrice * promo.discount) / 100;
             case 'fixed_price': case 'bundle_sale':
                 return promo.specialPrice;
+            case 'bogo': case 'buy_n_get_m': case 'second_half_price':
             case 'member_exclusive':
                 return originalPrice;
             default:
@@ -2162,9 +2165,10 @@ pageRenderers['sales'] = function() {
 };
 let posCart = [];
 function init_sales() {
-    posCart = [];
+    if (window._salesF8Handler) { document.removeEventListener('keydown', window._salesF8Handler); }
+    window._salesF8Handler = function(e) { if(e.key==='F8' && currentPage=='sales') { e.preventDefault(); checkout(); } };
+    document.addEventListener('keydown', window._salesF8Handler);
     renderPosProducts();
-    document.addEventListener('keydown', function(e) { if(e.key==='F8' && currentPage==='sales') { e.preventDefault(); checkout(); } });
 }
 function filterPosProducts() {
     renderPosProducts(document.getElementById('posSearch')?.value||'');
@@ -2398,19 +2402,24 @@ function checkout() {
     // Calculate total with BOGO logic
     let total = 0;
     let bogoItems = [];
+    const promos = loadData('promotions');
+    const now = new Date();
     posCart.forEach(item => {
-        const promos = loadData('promotions');
-        const now = new Date();
-        let isBogo = false;
+        let bogoPromo = null;
         for (const p of promos) {
             const s = new Date(p.startDate); const e = new Date(p.endDate);
             if (now < s || now > e) continue;
-            if (p.promoType !== 'bogo') continue;
+            if (p.type !== 'bogo') continue;
             if (p.productId !== 'all' && String(p.productId) !== String(item.productId)) continue;
-            isBogo = true; break;
+            bogoPromo = p; break;
         }
-        if (isBogo) {
-            const freeItems = Math.floor(item.qty / 2);
+        if (bogoPromo) {
+            const buyQty = bogoPromo.buyQty || 1;
+            const freeQty = bogoPromo.freeQty || 1;
+            const perSet = buyQty + freeQty;
+            const sets = Math.floor(item.qty / perSet);
+            const remainder = item.qty % perSet;
+            const freeItems = sets * freeQty + Math.max(0, remainder - buyQty);
             const paidItems = item.qty - freeItems;
             total += item.price * paidItems;
             bogoItems.push(item.name);
@@ -2499,6 +2508,14 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
         paymentMethod: payMethod
     });
     saveData('salesOrders', orders);
+    // 记录财务流水（收入）
+    const ledger = loadData('financeLedger');
+    ledger.push({
+        id: makeId(), date: getToday(), type: '收入', category: '销售收入',
+        amount: finalAmount, account: payMethod || '现金', summary: `POS销售 ${orderNo}`,
+        voucherNo: orderNo
+    });
+    saveData('financeLedger', ledger);
     // Deduct coupon points
     if (couponCost > 0 && posMember && actualCouponDiscount > 0) {
         const members2 = loadData('members');
@@ -2707,7 +2724,11 @@ pageRenderers['sales_stats'] = function() {
 };
 function init_sales_stats() {
     const orders = loadData('salesOrders');
-    const normTime = t => (t||'').replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
+    const normTime = t => {
+        t = t || '';
+        if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+        return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
+    };
     const normOrders = orders.map(o=>({...o, time: normTime(o.time)}));
     const today = getToday();
     const thisMonth = today.slice(0,7);
@@ -3009,6 +3030,7 @@ function saveMember() {
     const name = document.getElementById('frmMemName').value.trim();
     const phone = document.getElementById('frmMemPhone').value.trim();
     if(!name||!phone) { alert('姓名和手机号不能为空'); return; }
+    const isNew = !id;
     const data = {
         id: id ? parseInt(id) : (members.length?Math.max(...members.map(m=>m.id))+1:1),
         cardNo: document.getElementById('frmMemCardNo').value.trim(),
@@ -3031,8 +3053,12 @@ function saveMember() {
     refreshCurrentTable();
     addLog(`会员操作: ${id?'编辑':'新增'} ${data.name}`);
     showToast(`会员"${data.name}"已保存`);
-    // API 同步（后台）
-    _apiSaveMember(data).catch(e => console.warn('API保存会员失败:', e.message));
+    // API 同步：新会员用POST，已有会员用PUT
+    if (isNew) {
+        _apiPost('/api/members', data).catch(e => console.warn('API保存会员失败:', e.message));
+    } else {
+        _apiPut('/api/members/' + data.id, data).catch(e => console.warn('API保存会员失败:', e.message));
+    }
     // 新增会员显示会员卡
     if (!id) {
         const lvl = loadData('memberLevels').find(l=>l.name===data.level);
@@ -3872,7 +3898,7 @@ function manageAlertSettings() {
     let html = `<table class="data-table" style="min-width:500px;"><thead><tr><th>适用分类</th><th>最低库存</th><th>最高库存</th><th>临期天数</th><th>启用</th><th>操作</th></tr></thead><tbody>`;
     settings.forEach(s => {
         html += `<tr>
-            <td>${s.productCategory}</td>
+            <td><select id="setCat_${s.id}" style="width:100%;">${cats.map(c=>`<option ${c.name===s.productCategory?'selected':''}>${c.name}</option>`).join('')}</select></td>
             <td><input id="setMin_${s.id}" type="number" value="${s.minStock}" style="width:70px;"></td>
             <td><input id="setMax_${s.id}" type="number" value="${s.maxStock}" style="width:70px;"></td>
             <td><input id="setExp_${s.id}" type="number" value="${s.expiryDays}" style="width:60px;"></td>
@@ -3893,10 +3919,12 @@ function saveAlertSettings() {
         const maxEl = document.getElementById('setMax_'+s.id);
         const expEl = document.getElementById('setExp_'+s.id);
         const enEl = document.getElementById('setEn_'+s.id);
+        const catEl = document.getElementById('setCat_'+s.id);
         if(minEl) s.minStock = parseInt(minEl.value)||0;
         if(maxEl) s.maxStock = parseInt(maxEl.value)||0;
         if(expEl) s.expiryDays = parseInt(expEl.value)||30;
         if(enEl) s.enabled = enEl.checked;
+        if(catEl) s.productCategory = catEl.value;
     });
     saveData('inventoryAlertSettings', settings);
     closeModal();
@@ -3906,7 +3934,10 @@ function saveAlertSettings() {
 }
 function addAlertSettingRow() {
     const settings = loadData('inventoryAlertSettings');
-    settings.push({id:Math.max(...settings.map(s=>s.id))+1,productCategory:'新分类',minStock:50,maxStock:2000,expiryDays:30,enabled:true});
+    const cats = loadData('categories');
+    const defaultCat = cats.length > 0 ? cats[0].name : '全部';
+    const maxId = settings.length > 0 ? Math.max(...settings.map(s=>s.id)) : 0;
+    settings.push({id: maxId+1, productCategory: defaultCat, minStock: 50, maxStock: 2000, expiryDays: 30, enabled: true});
     saveData('inventoryAlertSettings', settings);
     closeModal();
     manageAlertSettings();
@@ -5333,7 +5364,9 @@ pageRenderers['employee_salary'] = function() {
         </div>
     </div>`;
 };
-function init_employee_salary() {}
+function init_employee_salary() {
+    refreshCurrentTable = () => { try { renderPage('employee_salary'); } catch(e) {} };
+}
 function autoCalcSalary() {
     const employees = loadData('employees');
     let salaries = loadData('salaries');
@@ -5746,16 +5779,6 @@ pageRenderers['supplier_contract'] = function() {
 let currentContractStatusFilter = '全部';
 function filterContractStatus(val) { currentContractStatusFilter = val; currentFilterTerm = ''; currentTablePage = 1; refreshCurrentTable(); }
 function init_supplier_contract() {
-    const today = getToday();
-    const ctAll = loadData('supplierContracts');
-    let ctAutoChanged = false;
-    ctAll.forEach(ct => {
-        if (ct.status === '已续签') return;
-        const diff = Math.ceil((new Date(ct.expiryDate)-new Date())/(1000*60*60*24));
-        const autoStatus = diff < 0 ? '已到期' : diff === 0 ? '即将到期' : '生效中';
-        if (ct.status !== autoStatus) { ct.status = autoStatus; ctAutoChanged = true; }
-    });
-    if (ctAutoChanged) { saveData('supplierContracts', ctAll); syncContractSupplierStatus(); }
     refreshCurrentTable = () => {
         let data = loadData('supplierContracts');
         if (currentContractStatusFilter !== '全部') {
@@ -6231,7 +6254,7 @@ function renderSysLoginLogTable(logs) {
     document.getElementById('sysLoginLogPage').innerHTML = `<div>共 ${filtered.length} 条</div>` + Array.from({length: totalPages}, (_, i) => `<div class="page-btn ${i + 1 === sysLoginLogPage ? 'active' : ''}" onclick="sysLoginLogPage=${i + 1};renderSysLoginLogTable([...loadData('loginLogs')].reverse())">${i + 1}</div>`).join('');
 }
 function init_system_log_mgmt() {
-    sysLogTab = 'op'; sysOpLogFilter = ''; sysLoginLogFilter = ''; sysOpLogPage = 1; sysLoginLogPage = 1;
+    sysOpLogFilter = ''; sysLoginLogFilter = ''; sysOpLogPage = 1; sysLoginLogPage = 1;
     renderSysLogTabContent();
 }
 // -- 数据备份与恢复(汇总) --
@@ -6343,7 +6366,6 @@ function renderSysBakTabContent() {
     }
 }
 function init_system_backup_mgmt() {
-    sysBakTab = 'backup';
     renderSysBakTabContent();
 }
 // -- 系统设置(汇总) --
