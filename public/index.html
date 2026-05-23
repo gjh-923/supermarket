@@ -850,7 +850,17 @@ function loadData(key) {
     const d = localStorage.getItem('sms_'+key);
     return d ? JSON.parse(d) : JSON.parse(JSON.stringify(DEFAULT_DATA[key]));
 }
-function saveData(key, data) { localStorage.setItem('sms_'+key, JSON.stringify(data)); }
+function saveData(key, data) {
+    localStorage.setItem('sms_'+key, JSON.stringify(data));
+    // 自动推送数据到服务器（多用户同步）
+    if (_apiToken) {
+        fetch(API_BASE + '/api/sync/' + key, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
+            body: JSON.stringify({ data: Array.isArray(data) ? data : Object.values(data) })
+        }).catch(() => {});
+    }
+}
 function initAllData() {
     Object.keys(DEFAULT_DATA).forEach(k => { if(!localStorage.getItem('sms_'+k)) saveData(k, DEFAULT_DATA[k]); });
 }

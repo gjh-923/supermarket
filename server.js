@@ -1392,6 +1392,93 @@ app.get('/api/stats/sales', (req, res) => {
 
 // ==================== EXPORT ALL DATA ====================
 
+// 批量同步：前端推送完整表数据到服务器（所有模块通用）
+const ALLOWED_TABLES = new Set([
+  'products', 'categories', 'members', 'member_levels', 'member_points_records',
+  'suppliers', 'supplier_contracts', 'supplier_evaluations',
+  'employees', 'employee_positions', 'departments',
+  'schedules', 'attendances', 'salaries',
+  'sales_orders', 'purchase_orders', 'inventory_records',
+  'promotions', 'inventory_alert_settings', 'inventory_check_tasks', 'inventory_check_items',
+  'warehouse_zones', 'finance_ledger', 'finance_budget', 'finance_tax',
+  'system_roles', 'system_menus', 'dict_items', 'system_params', 'notices', 'monitor_configs',
+  'login_logs', 'system_logs', 'maintenance_records', 'exchange_rewards'
+]);
+
+function _camelToSnake(str) {
+  return str.replace(/[A-Z]/g, letter => '_' + letter.toLowerCase());
+}
+
+app.post('/api/sync/:table', authMiddleware, (req, res) => {
+  try {
+    // 前端用camelCase传表名，转成snake_case匹配数据库
+    const tableName = _camelToSnake(req.params.table);
+    if (!ALLOWED_TABLES.has(tableName)) return res.json(err('非法表名: ' + tableName));
+    const rows = req.body.data;
+    if (!Array.isArray(rows)) return res.json(err('数据格式错误'));
+
+    // Get column info for this table
+    const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
+    const validColumns = new Set(tableInfo.map(c => c.name));
+    if (validColumns.size === 0) return res.json(err('表不存在'));
+
+    // Replace all data in the table
+    const deleteStmt = db.prepare(`DELETE FROM ${tableName}`);
+    deleteStmt.run();
+
+    if (rows.length > 0) {
+      // Build insert statement from first row
+      const firstRow = rows[0];
+      const columns = [];
+      const placeholders = [];
+
+      for (const [key, value] of Object.entries(firstRow)) {
+        // Convert camelCase to snake_case
+        const snakeKey = _camelToSnake(key);
+        if (validColumns.has(snakeKey)) {
+          columns.push(snakeKey);
+          placeholders.push('?');
+        } else if (validColumns.has(key)) {
+          columns.push(key);
+          placeholders.push('?');
+        }
+      }
+
+      if (columns.length > 0) {
+        const insertStmt = db.prepare(`INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`);
+
+        const insertMany = db.transaction((items) => {
+          for (const row of items) {
+            const values = columns.map(col => {
+              let val = row[col]; // Try snake_case
+              if (val === undefined) {
+                // Try camelCase
+                const camelKey = col.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+                val = row[camelKey];
+              }
+              // Serialize objects/arrays to JSON strings
+              if (typeof val === 'object' && val !== null) {
+                val = JSON.stringify(val);
+              }
+              return val !== undefined ? val : null;
+            });
+            insertStmt.run(...values);
+          }
+        });
+        insertMany(rows);
+      }
+    }
+
+    db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
+      .run(req.user.name, `同步数据: ${tableName} (${rows.length}条)`);
+
+    res.json(okMsg('同步成功'));
+  } catch (e) {
+    console.error('Sync error:', e);
+    res.json(err(e.message));
+  }
+});
+
 app.get('/api/export/all', (req, res) => {
   try {
     const tables = [
