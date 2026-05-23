@@ -172,7 +172,7 @@
             .form-row { grid-template-columns: 1fr; }
         }
         /* ========== 排班 & 考勤 & 工资 ========== */
-        .schedule-calendar { background: white; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: hidden; }
+        .schedule-calendar { background: white; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: visible; }
         .schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f5faf0; border-bottom: 1px solid #edf3e7; gap: 8px; flex-wrap: wrap; }
         .schedule-header button { font-size: 0.75rem; padding: 6px 12px; }
         .schedule-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
@@ -739,7 +739,7 @@ const DEFAULT_DATA = {
         { id:4,cardNo:'HY20240003',name:'赵六',gender:'女',birthday:'1992-03-18',phone:'13800001004',email:'zhaoliu@email.com',address:'北京市丰台区南三环16号',level:'普通会员',points:120,joinDate:'2024-05-01',totalSpent:1200,status:'冻结',lastConsumeDate:'2024-05-10',source:'活动推广' }
     ],
     memberLevels: [
-        { name:'钻石会员', minSpent:50000, discount:85, pointsRate:2, cardColor:'#4db8ff', benefits:'8.5折优惠 | 2倍积分加速 | 每月8号三倍积分 | 生日月赠2000积分+蛋糕券 | 专属客户经理1对1 | 免费停车5小时 | 72小时无忧退换 | 企业团购专属优惠 | 年度会员答谢礼 | 新品首发优先购买权' },
+        { name:'钻石会员', minSpent:50000, discount:85, pointsRate:2, cardColor:'#4db8ff', benefits:'尊享8.5折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时/次 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' },
         { name:'铂金会员', minSpent:20000, discount:90, pointsRate:1.8, cardColor:'#b39ddb', benefits:'9折优惠 | 1.8倍积分加速 | 每月8号三倍积分 | 生日月赠1000积分+蛋糕券 | 专属客服经理 | 免费停车3小时 | 48小时无忧退换' },
         { name:'黄金会员', minSpent:5000, discount:94, pointsRate:1.5, cardColor:'#f5a623', benefits:'9.4折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验' },
         { name:'白银会员', minSpent:1000, discount:97, pointsRate:1.2, cardColor:'#8eb8d0', benefits:'9.7折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
@@ -1044,10 +1044,7 @@ async function doLogin() {
         const data = await _apiLogin(username, password);
         currentUser = { username: data.user.username, role: data.user.role, name: data.user.name };
         apiLoginSuccess = true;
-        console.log('API 登录成功，正在同步数据...');
-        await _apiSyncAll();
-        await _seedServerIfEmpty();
-        console.log('数据同步完成');
+        _apiToken = data.token || _apiToken;
     } catch (e) {
         console.warn('API 登录失败，使用本地登录:', e.message);
     }
@@ -1070,6 +1067,7 @@ async function doLogin() {
         currentUser = { username, ...user };
     }
 
+    // 立即显示主界面（不等数据同步完成）
     document.getElementById('loginWrapper').style.display = 'none';
     document.getElementById('appLayout').classList.add('show');
     document.getElementById('displayUserName').textContent = currentUser.name;
@@ -1078,10 +1076,18 @@ async function doLogin() {
     buildNav();
     navigateTo('dashboard');
     showToast('欢迎登录，' + currentUser.name + '！');
-    // 后台检测 API 可用性
-    _checkApi();
-    // 启动自动同步（每5秒从服务器拉取最新数据）
-    if (apiLoginSuccess) startAutoSync();
+
+    // 后台异步同步数据（不阻塞UI）
+    if (apiLoginSuccess) {
+        _apiSyncAll().then(() => {
+            _seedServerIfEmpty();
+            _checkApi();
+            startAutoSync();
+            console.log('后台数据同步完成');
+        }).catch(e => console.warn('后台同步失败:', e.message));
+    } else {
+        _checkApi();
+    }
 }
 function recordLoginLog(username, realName, status, message) {
     const logs = loadData('loginLogs');
@@ -4690,29 +4696,53 @@ function jumpCostPeriod() {
 }
 
 // -- 财务管理父页面 --
+let _finSelectedPage = null;
+function _finSelectModule(page, el) {
+    _finSelectedPage = page;
+    // Highlight selected card
+    document.querySelectorAll('.fin-module-card').forEach(c => c.style.borderColor = 'transparent');
+    if (el) el.style.borderColor = '#3b9e5c';
+    // Render selected module content
+    const panel = document.getElementById('finDetailPanel');
+    if (!panel) return;
+    if (pageRenderers[page]) {
+        panel.innerHTML = pageRenderers[page]();
+        // Call init if exists
+        const initFn = window['init_' + page];
+        if (typeof initFn === 'function') initFn();
+    }
+}
 function finParentPage(title, breadcrumb, children) {
+    const firstPage = children[0]?.page;
+    _finSelectedPage = firstPage;
     const ledger = loadData('financeLedger');
     const recentLedger = [...ledger].slice(-6).reverse();
     const totalIncome = ledger.filter(l=>l.amount>0).reduce((s,l)=>s+l.amount,0);
     const totalExpense = ledger.filter(l=>l.amount<0).reduce((s,l)=>s+Math.abs(l.amount),0);
     const orders = loadData('salesOrders');
     const totalSales = orders.reduce((s,o)=>s+o.totalAmount,0);
+    // Pre-render first module content
+    let previewContent = '';
+    if (firstPage && pageRenderers[firstPage]) {
+        previewContent = pageRenderers[firstPage]();
+    }
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
     <div class="page-body" style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:280px;">
-            <div class="sys-card-grid" style="grid-template-columns:1fr;">${children.map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')" style="flex-direction:row;text-align:left;gap:14px;padding:18px 20px;"><div class="sys-card-icon" style="font-size:1.6rem;width:44px;height:44px;border-radius:14px;flex-shrink:0;">${c.icon}</div><div><div class="sys-card-name" style="margin-bottom:2px;">${c.name}</div><div class="sys-card-desc">${c.desc}</div></div><span style="margin-left:auto;color:#b8d9a4;font-size:1.2rem;">→</span></div>`).join('')}</div>
+        <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:8px;">
+            ${children.map(c=>`<div class="sys-card fin-module-card fade-in" onclick="_finSelectModule('${c.page}',this)" style="flex-direction:row;text-align:left;gap:12px;padding:14px 16px;border:2px solid ${_finSelectedPage===c.page?'#3b9e5c':'transparent'};cursor:pointer;"><div class="sys-card-icon" style="font-size:1.4rem;width:40px;height:40px;border-radius:12px;flex-shrink:0;">${c.icon}</div><div style="flex:1;min-width:0;"><div class="sys-card-name" style="margin-bottom:2px;font-size:0.85rem;">${c.name}</div><div class="sys-card-desc" style="font-size:0.68rem;">${c.desc}</div></div><span style="color:#b8d9a4;font-size:1rem;flex-shrink:0;">▸</span></div>`).join('')}
+            <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;">¥${formatMoney(totalSales)}</div><div class="stat-label" style="font-size:0.6rem;">总销售额</div></div>
+                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;color:#2a7a3b;">¥${formatMoney(totalIncome)}</div><div class="stat-label" style="font-size:0.6rem;">总收入</div></div>
+                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;color:#c23d2e;">¥${formatMoney(totalExpense)}</div><div class="stat-label" style="font-size:0.6rem;">总支出</div></div>
+                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;">${ledger.length}</div><div class="stat-label" style="font-size:0.6rem;">流水记录</div></div>
+            </div>
+            <div style="background:white;border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.04);font-size:0.68rem;">
+                <div style="font-weight:600;color:#1f3b2c;margin-bottom:8px;">最近资金流水</div>
+                ${recentLedger.length===0 ? '<span style="color:#819e73;">暂无记录</span>' : recentLedger.map(l=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f5faf0;"><span>${l.date||''} ${l.category||''}</span><span style="color:${l.amount>=0?'#2a7a3b':'#c23d2e'};">¥${formatMoney(l.amount)}</span></div>`).join('')}
+            </div>
         </div>
-        <div style="flex:2;min-width:340px;display:flex;flex-direction:column;gap:14px;">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
-                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">💰</div><div class="stat-num" style="font-size:1.2rem;">¥${formatMoney(totalSales)}</div><div class="stat-label">总销售额</div></div>
-                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📈</div><div class="stat-num" style="font-size:1.2rem;color:#2a7a3b;">¥${formatMoney(totalIncome)}</div><div class="stat-label">总收入</div></div>
-                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📉</div><div class="stat-num" style="font-size:1.2rem;color:#c23d2e;">¥${formatMoney(totalExpense)}</div><div class="stat-label">总支出</div></div>
-                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📒</div><div class="stat-num" style="font-size:1.2rem;">${ledger.length}</div><div class="stat-label">流水记录</div></div>
-            </div>
-            <div style="background:white;border-radius:20px;padding:16px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.04);flex:1;">
-                <h3 style="color:#1f3b2c;font-size:0.9rem;margin-bottom:12px;display:flex;align-items:center;gap:6px;"><span>📋</span> 最近资金流水</h3>
-                ${recentLedger.length===0 ? '<p style="color:#819e73;font-size:0.78rem;">暂无流水记录</p>' : `<table style="width:100%;border-collapse:collapse;font-size:0.73rem;"><thead><tr style="color:#819e73;text-align:left;"><th style="padding:6px 8px;">日期</th><th style="padding:6px 8px;">类型</th><th style="padding:6px 8px;">科目</th><th style="padding:6px 8px;text-align:right;">金额</th></tr></thead><tbody>${recentLedger.map(l=>`<tr style="border-top:1px solid #f5faf0;"><td style="padding:6px 8px;">${l.date||''}</td><td style="padding:6px 8px;"><span class="badge ${l.amount>=0?'badge-on':'badge-off'}" style="font-size:0.65rem;">${l.type||''}</span></td><td style="padding:6px 8px;">${l.category||''}</td><td style="padding:6px 8px;text-align:right;color:${l.amount>=0?'#2a7a3b':'#c23d2e'};font-weight:500;">¥${formatMoney(l.amount)}</td></tr>`).join('')}</tbody></table>`}
-            </div>
+        <div style="flex:1;min-width:400px;background:white;border-radius:20px;padding:0;box-shadow:0 2px 12px rgba(0,0,0,0.04);overflow:hidden;" id="finDetailPanel">
+            ${previewContent}
         </div>
     </div></div>`;
 }
@@ -5732,7 +5762,7 @@ pageRenderers['supplier'] = function() {
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statSupActive" style="color:#2a7a3b;">-</div><div class="stat-label">合作中供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statSupALevel" style="color:#ffd700;">-</div><div class="stat-label">A级供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-num" id="statSupCats">-</div><div class="stat-label">供货品类数</div></div>
-                <div class="stat-card"><div class="stat-icon"><span style="display:inline-flex;gap:3px;align-items:center;"><span style="display:inline-block;width:5px;height:18px;background:#bc5a4a;border-radius:2px;"></span><span style="display:inline-block;width:5px;height:18px;background:#bc5a4a;border-radius:2px;"></span></span></div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
+                <div class="stat-card"><div class="stat-icon" style="font-size:1.5rem;color:#bc5a4a;">▶</div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
             </div>
             <div class="action-bar">
                 <div class="btn-group">
