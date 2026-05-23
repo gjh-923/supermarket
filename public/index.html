@@ -176,10 +176,10 @@
         .schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f5faf0; border-bottom: 1px solid #edf3e7; gap: 8px; flex-wrap: wrap; }
         .schedule-header button { font-size: 0.75rem; padding: 6px 12px; }
         .schedule-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-        .schedule-cell { border: 1px solid #f0f4eb; padding: 4px 3px; min-height: 52px; cursor: pointer; transition: 0.15s; overflow: hidden; }
+        .schedule-cell { border: 1px solid #f0f4eb; padding: 5px 4px; min-height: 60px; cursor: pointer; transition: 0.15s; overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
         .schedule-cell:hover { background: #f0f7e8; }
         .schedule-cell.header { background: #f5faf0; font-weight: 600; text-align: center; cursor: default; min-height: auto; padding: 8px 4px; font-size: 0.7rem; color: #426b39; }
-        .schedule-cell .day-num { font-size: 0.7rem; font-weight: 600; color: #1f3b2c; margin-bottom: 2px; }
+        .schedule-cell .day-num { font-size: 0.72rem; font-weight: 600; color: #1f3b2c; margin-bottom: 1px; }
         .schedule-cell .shift-tag { font-size: 0.55rem; padding: 0px 5px; border-radius: 8px; margin: 1px 0; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.3; }
         .shift-早班 { background: #fff7db; color: #b87c1a; }
         .shift-中班 { background: #e3f2fd; color: #1565c0; }
@@ -726,11 +726,11 @@ const DEFAULT_DATA = {
         { id:4,cardNo:'HY20240003',name:'赵六',gender:'女',birthday:'1992-03-18',phone:'13800001004',email:'zhaoliu@email.com',address:'北京市丰台区南三环16号',level:'普通会员',points:120,joinDate:'2024-05-01',totalSpent:1200,status:'冻结',lastConsumeDate:'2024-05-10',source:'活动推广' }
     ],
     memberLevels: [
-        { name:'青铜会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#cd7f32', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价' },
-        { name:'白银会员', minSpent:1000, discount:97, pointsRate:1.2, cardColor:'#c0c0c0', benefits:'9.7折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
-        { name:'黄金会员', minSpent:5000, discount:94, pointsRate:1.5, cardColor:'#ffd700', benefits:'9.4折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验' },
-        { name:'铂金会员', minSpent:20000, discount:90, pointsRate:1.8, cardColor:'#e5e4e2', benefits:'9折优惠 | 1.8倍积分加速 | 每月8号三倍积分 | 生日月赠1000积分+蛋糕券 | 专属客服经理 | 免费停车3小时 | 48小时无忧退换' },
-        { name:'钻石会员', minSpent:50000, discount:85, pointsRate:2, cardColor:'#b9f2ff', benefits:'8.5折优惠 | 2倍积分加速 | 每月8号三倍积分 | 生日月赠2000积分+蛋糕券 | 专属客户经理1对1 | 免费停车5小时 | 72小时无忧退换 | 企业团购专属优惠 | 年度会员答谢礼 | 新品首发优先购买权' }
+        { name:'钻石会员', minSpent:50000, discount:85, pointsRate:2, cardColor:'#4db8ff', benefits:'8.5折优惠 | 2倍积分加速 | 每月8号三倍积分 | 生日月赠2000积分+蛋糕券 | 专属客户经理1对1 | 免费停车5小时 | 72小时无忧退换 | 企业团购专属优惠 | 年度会员答谢礼 | 新品首发优先购买权' },
+        { name:'铂金会员', minSpent:20000, discount:90, pointsRate:1.8, cardColor:'#b39ddb', benefits:'9折优惠 | 1.8倍积分加速 | 每月8号三倍积分 | 生日月赠1000积分+蛋糕券 | 专属客服经理 | 免费停车3小时 | 48小时无忧退换' },
+        { name:'黄金会员', minSpent:5000, discount:94, pointsRate:1.5, cardColor:'#f5a623', benefits:'9.4折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验' },
+        { name:'白银会员', minSpent:1000, discount:97, pointsRate:1.2, cardColor:'#8eb8d0', benefits:'9.7折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
+        { name:'青铜会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#d4895a', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价' }
     ],
     suppliers: [
         { id:1,code:'GYS20240001',name:'美味园',contact:'张经理',phone:'13900001001',email:'meiweiyuan@supplier.com',address:'北京市朝阳区食品工业园A区',products:'糕点类',level:'A级',status:'合作中',cooperationDate:'2023-01-10',bankAccount:'6222021234567890',taxId:'91110108MA01XXXX1X',notes:'品质稳定，供货及时，长期合作伙伴',supplyCapacity:'月供5000件' },
@@ -4578,17 +4578,17 @@ pageRenderers['finance_cost'] = function() {
                 </div>
                 <div style="background:white;border-radius:20px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
                     <h3 style="color:#1f3b2c;font-size:0.9rem;margin-bottom:12px;">成本趋势（近6${period==='day'?'日':period==='month'?'个月':'年'}）</h3>
-                    <div style="display:flex;align-items:flex-end;gap:8px;height:160px;padding:0 4px;overflow:hidden;">
+                    <div style="display:flex;align-items:flex-end;gap:8px;height:160px;padding:0 4px;overflow:hidden;position:relative;">
                         ${trendData.map(t => {
                             const maxVal = Math.max(...trendData.map(d=>Math.max(d.cost,d.revenue)), 1);
-                            const costH = Math.max(t.cost/maxVal*140, 2);
-                            const revH = Math.max(t.revenue/maxVal*140, 2);
-                            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
-                                <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
-                                    <div title="销售额 ¥${formatMoney(t.revenue)}" style="width:60%;background:#5cb85c;border-radius:3px 3px 0 0;height:${revH}px;min-height:2px;"></div>
-                                    <div title="成本 ¥${formatMoney(t.cost)}" style="width:60%;background:#c23d2e;border-radius:3px 3px 0 0;height:${costH}px;min-height:2px;"></div>
+                            const costH = Math.min(Math.max(t.cost/maxVal*140, 2), 140);
+                            const revH = Math.min(Math.max(t.revenue/maxVal*140, 2), 140);
+                            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;">
+                                <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;height:140px;justify-content:flex-end;">
+                                    <div title="销售额 ¥${formatMoney(t.revenue)}" style="width:60%;max-width:100%;background:#5cb85c;border-radius:3px 3px 0 0;height:${revH}px;min-height:2px;flex-shrink:0;"></div>
+                                    <div title="成本 ¥${formatMoney(t.cost)}" style="width:60%;max-width:100%;background:#c23d2e;border-radius:3px 3px 0 0;height:${costH}px;min-height:2px;flex-shrink:0;"></div>
                                 </div>
-                                <span style="font-size:0.6rem;color:#819e73;margin-top:4px;">${t.label}</span>
+                                <span style="font-size:0.6rem;color:#819e73;margin-top:4px;white-space:nowrap;">${t.label}</span>
                             </div>`;
                         }).join('')}
                     </div>
@@ -4677,8 +4677,30 @@ function jumpCostPeriod() {
 
 // -- 财务管理父页面 --
 function finParentPage(title, breadcrumb, children) {
+    const ledger = loadData('financeLedger');
+    const recentLedger = [...ledger].slice(-6).reverse();
+    const totalIncome = ledger.filter(l=>l.amount>0).reduce((s,l)=>s+l.amount,0);
+    const totalExpense = ledger.filter(l=>l.amount<0).reduce((s,l)=>s+Math.abs(l.amount),0);
+    const orders = loadData('salesOrders');
+    const totalSales = orders.reduce((s,o)=>s+o.totalAmount,0);
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
-    <div class="page-body"><div class="sys-card-grid">${children.map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')"><div class="sys-card-icon">${c.icon}</div><div class="sys-card-name">${c.name}</div><div class="sys-card-desc">${c.desc}</div></div>`).join('')}</div></div></div>`;
+    <div class="page-body" style="display:flex;gap:16px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:280px;">
+            <div class="sys-card-grid" style="grid-template-columns:1fr;">${children.map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')" style="flex-direction:row;text-align:left;gap:14px;padding:18px 20px;"><div class="sys-card-icon" style="font-size:1.6rem;width:44px;height:44px;border-radius:14px;flex-shrink:0;">${c.icon}</div><div><div class="sys-card-name" style="margin-bottom:2px;">${c.name}</div><div class="sys-card-desc">${c.desc}</div></div><span style="margin-left:auto;color:#b8d9a4;font-size:1.2rem;">→</span></div>`).join('')}</div>
+        </div>
+        <div style="flex:2;min-width:340px;display:flex;flex-direction:column;gap:14px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">💰</div><div class="stat-num" style="font-size:1.2rem;">¥${formatMoney(totalSales)}</div><div class="stat-label">总销售额</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📈</div><div class="stat-num" style="font-size:1.2rem;color:#2a7a3b;">¥${formatMoney(totalIncome)}</div><div class="stat-label">总收入</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📉</div><div class="stat-num" style="font-size:1.2rem;color:#c23d2e;">¥${formatMoney(totalExpense)}</div><div class="stat-label">总支出</div></div>
+                <div class="stat-card" style="padding:16px;"><div class="stat-icon" style="font-size:1.3rem;">📒</div><div class="stat-num" style="font-size:1.2rem;">${ledger.length}</div><div class="stat-label">流水记录</div></div>
+            </div>
+            <div style="background:white;border-radius:20px;padding:16px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.04);flex:1;">
+                <h3 style="color:#1f3b2c;font-size:0.9rem;margin-bottom:12px;display:flex;align-items:center;gap:6px;"><span>📋</span> 最近资金流水</h3>
+                ${recentLedger.length===0 ? '<p style="color:#819e73;font-size:0.78rem;">暂无流水记录</p>' : `<table style="width:100%;border-collapse:collapse;font-size:0.73rem;"><thead><tr style="color:#819e73;text-align:left;"><th style="padding:6px 8px;">日期</th><th style="padding:6px 8px;">类型</th><th style="padding:6px 8px;">科目</th><th style="padding:6px 8px;text-align:right;">金额</th></tr></thead><tbody>${recentLedger.map(l=>`<tr style="border-top:1px solid #f5faf0;"><td style="padding:6px 8px;">${l.date||''}</td><td style="padding:6px 8px;"><span class="badge ${l.amount>=0?'badge-on':'badge-off'}" style="font-size:0.65rem;">${l.type||''}</span></td><td style="padding:6px 8px;">${l.category||''}</td><td style="padding:6px 8px;text-align:right;color:${l.amount>=0?'#2a7a3b':'#c23d2e'};font-weight:500;">¥${formatMoney(l.amount)}</td></tr>`).join('')}</tbody></table>`}
+            </div>
+        </div>
+    </div></div>`;
 }
 pageRenderers['fin_cashier'] = function() { return finParentPage('收银管理','财务管理 / 收银管理',[{page:'finance',icon:'💼',name:'财务核算',desc:'财务总览：营收、成本、利润及资金流水概况'},{page:'finance_ledger',icon:'📒',name:'资金流水',desc:'管理资金流水记录，新增/编辑/删除收支明细'}]); };
 pageRenderers['fin_report'] = function() { return finParentPage('财务报表生成','财务管理 / 财务报表生成',[{page:'finance_report',icon:'📊',name:'收支报表',desc:'汇总销售收入、采购支出及各类费用明细'},{page:'finance_profit',icon:'📈',name:'利润表',desc:'营业收入、成本、费用及净利润分析'},{page:'finance_balance',icon:'⚖️',name:'资产负债表',desc:'资产、负债与所有者权益平衡表'},{page:'finance_cashflow',icon:'💵',name:'现金流量表',desc:'经营活动现金流入流出及净现金流'}]); };
@@ -5014,15 +5036,18 @@ pageRenderers['employee_schedule'] = function() {
     for (let d=1; d<=daysInMonth; d++) {
         const dateStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const isToday = dateStr === todayStr;
+        const isWeekend = new Date(scheduleYear, scheduleMonth-1, d).getDay()%6===0;
         const daySchedules = schedules.filter(s=>s.date===dateStr);
         let tagsHtml = '';
-        daySchedules.forEach(s=>{
+        const maxShow = 3;
+        daySchedules.slice(0, maxShow).forEach(s=>{
             const emp = employees.find(e=>e.id===s.employee_id);
             const shiftName = s.shift||'休息';
             const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
             if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name.slice(0,2)}</span>`;
         });
-        const todayStyle = isToday ? 'background:#f0f7e8;border:2px solid #5cb85c;box-shadow:0 0 8px rgba(92,184,92,0.2);' : '';
+        if (daySchedules.length > maxShow) tagsHtml += `<span class="shift-tag" style="background:#f5f5f5;color:#819e73;border:1px solid #ddd;font-weight:600;">+${daySchedules.length-maxShow}</span>`;
+        const todayStyle = isToday ? 'background:#f0f7e8;border:2px solid #5cb85c;box-shadow:0 0 8px rgba(92,184,92,0.2);' : isWeekend ? 'background:#fdfdf7;' : '';
         gridHtml += `<div class="schedule-cell" onclick="openScheduleDay('${dateStr}')" style="${todayStyle}"><div class="day-num" style="${isToday?'color:#2a7a3b;font-weight:700;':''}">${d}${isToday?' <span style="font-size:0.5rem;">今天</span>':''}</div>${tagsHtml}</div>`;
     }
     const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
@@ -5077,11 +5102,14 @@ pageRenderers['employee_schedule'] = function() {
             <div style="background:white;border-radius:20px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.04);margin-top:18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <h3 style="color:#1f3b2c;font-size:0.95rem;margin:0;">员工排班总览 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">${scheduleYear}年${scheduleMonth}月 · ${employees.length}人 · ${daysInMonth}天</span></h3>
-                    <span style="font-size:0.72rem;color:#819e73;">已排班: ${scheduledCount} 条记录</span>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="font-size:0.72rem;color:#819e73;">已排班: <b style="color:#2a7a3b;">${scheduledCount}</b> 条</span>
+                        <span style="font-size:0.65rem;color:#819e73;background:#f5faf0;padding:2px 8px;border-radius:10px;">可上下滚动查看</span>
+                    </div>
                 </div>
-                <div style="max-height:400px;overflow-y:auto;">
+                <div style="max-height:360px;overflow-y:auto;border-radius:12px;border:1px solid #edf3e7;scrollbar-width:thin;scrollbar-color:#b8d9a4 #f5faf0;">
                     <table class="data-table" style="min-width:100%;font-size:0.75rem;">
-                        <thead style="position:sticky;top:0;z-index:1;background:#f9fbf7;"><tr><th>员工</th><th>部门</th><th>岗位</th><th>早班</th><th>中班</th><th>晚班</th><th>休息</th><th>完成度</th><th>操作</th></tr></thead>
+                        <thead style="position:sticky;top:0;z-index:2;background:#f5faf0;"><tr><th>员工</th><th>部门</th><th>岗位</th><th>早班</th><th>中班</th><th>晚班</th><th>休息</th><th>完成度</th><th>操作</th></tr></thead>
                         <tbody>${empTableHtml || '<tr><td colspan="9" style="text-align:center;color:#819e73;padding:24px;">暂无员工数据</td></tr>'}</tbody>
                     </table>
                 </div>
@@ -5690,7 +5718,7 @@ pageRenderers['supplier'] = function() {
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statSupActive" style="color:#2a7a3b;">-</div><div class="stat-label">合作中供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statSupALevel" style="color:#ffd700;">-</div><div class="stat-label">A级供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-num" id="statSupCats">-</div><div class="stat-label">供货品类数</div></div>
-                <div class="stat-card"><div class="stat-icon">⏸</div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
+                <div class="stat-card"><div class="stat-icon">⏯</div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
             </div>
             <div class="action-bar">
                 <div class="btn-group">
