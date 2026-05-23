@@ -562,8 +562,10 @@ function startAutoSync() {
         _isSyncing = true;
         try {
             await _apiSyncAll();
-            // 刷新当前页面数据
-            if (typeof refreshCurrentTable === 'function') refreshCurrentTable();
+            // 重新渲染当前页面以显示最新数据
+            if (typeof currentPage !== 'undefined' && currentPage) {
+                renderPage(currentPage);
+            }
         } catch(e) { /* 静默失败 */ }
         _isSyncing = false;
     }, 20000);
