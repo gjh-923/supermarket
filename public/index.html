@@ -329,6 +329,8 @@
 const API_BASE = (window.location.protocol === 'file:') ? 'http://localhost:3457' : (window.location.origin || 'http://localhost:3457');
 let _apiToken = localStorage.getItem('sms_token') || '';
 let _apiUser = null;
+let _syncTimer = null;
+let _isSyncing = false;
 
 async function _apiRequest(method, path, body) {
     const headers = { 'Content-Type': 'application/json' };
@@ -550,6 +552,24 @@ async function _checkApi() {
         _apiAvailable = res.ok;
     } catch (e) { _apiAvailable = false; }
     return _apiAvailable;
+}
+
+// 自动同步定时器 - 每20秒从服务器拉取最新数据
+function startAutoSync() {
+    stopAutoSync();
+    _syncTimer = setInterval(async () => {
+        if (_isSyncing || !_apiToken) return;
+        _isSyncing = true;
+        try {
+            await _apiSyncAll();
+            // 刷新当前页面数据
+            if (typeof refreshCurrentTable === 'function') refreshCurrentTable();
+        } catch(e) { /* 静默失败 */ }
+        _isSyncing = false;
+    }, 20000);
+}
+function stopAutoSync() {
+    if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
 }
 
 // ==================== 数据定义 ====================
@@ -976,6 +996,8 @@ async function doLogin() {
     showToast('欢迎登录，' + currentUser.name + '！');
     // 后台检测 API 可用性
     _checkApi();
+    // 启动自动同步（每20秒从服务器拉取最新数据）
+    if (apiLoginSuccess) startAutoSync();
 }
 function recordLoginLog(username, realName, status, message) {
     const logs = loadData('loginLogs');
@@ -998,6 +1020,7 @@ function recordLoginLog(username, realName, status, message) {
 }
 function doLogout() {
     if(confirm('确定退出登录吗？')) {
+        stopAutoSync();
         _apiLogout();
         currentUser = null;
         document.getElementById('loginWrapper').style.display = '';
