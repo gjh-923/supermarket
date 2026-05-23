@@ -407,7 +407,7 @@ async function _apiSyncAll() {
         const allData = await _apiGet('/api/export/all');
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
-            // 服务器返回空数组且本地有数据时，保留本地（初始状态或服务器未同步）
+            // 服务器返回空数组时，保留本地数据不覆盖
             if (Array.isArray(data) && data.length === 0) {
                 const existing = localStorage.getItem('sms_' + camelKey);
                 if (existing) {
@@ -417,12 +417,24 @@ async function _apiSyncAll() {
                     } catch(e) {}
                 }
             }
-            // 服务器有数据时，以服务器为准
+            // 对于有数据的表：合并服务器和本地数据（以服务器为准，但保留本地独有的记录）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
-            transformed = _normalizeData(camelKey, transformed);
-            if (Array.isArray(transformed) && transformed.length > 0) {
-                localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
+            if (Array.isArray(data) && data.length > 0) {
+                const existing = localStorage.getItem('sms_' + camelKey);
+                if (existing) {
+                    try {
+                        const parsed = JSON.parse(existing);
+                        if (Array.isArray(parsed) && parsed.length > data.length) {
+                            // 本地数据更多，保留本地数据（用户可能添加了记录）
+                            console.log('保留本地' + camelKey + ': 本地' + parsed.length + '条 > 服务器' + data.length + '条');
+                            continue;
+                        }
+                    } catch(e) {}
+                }
             }
+            // 数据规范化：解析 JSON 字符串字段，修正字段名不匹配
+            transformed = _normalizeData(camelKey, transformed);
+            localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
         }
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
@@ -445,6 +457,24 @@ async function _seedServerIfEmpty() {
             }
         }
     } catch(e) { console.error('服务器数据初始化失败:', e.message); }
+}
+
+function startAutoSync() {
+    stopAutoSync();
+    _syncTimer = setInterval(async () => {
+        if (_isSyncing || !_apiToken) return;
+        _isSyncing = true;
+        try {
+            await _apiSyncAll();
+            if (typeof currentPage !== 'undefined' && currentPage) {
+                renderPage(currentPage);
+            }
+        } catch(e) {}
+        _isSyncing = false;
+    }, 5000);
+}
+function stopAutoSync() {
+    if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
 }
 
 function _normalizeData(key, data) {
@@ -561,26 +591,6 @@ async function _checkApi() {
     return _apiAvailable;
 }
 
-// 自动同步定时器 - 每20秒从服务器拉取最新数据
-function startAutoSync() {
-    stopAutoSync();
-    _syncTimer = setInterval(async () => {
-        if (_isSyncing || !_apiToken) return;
-        _isSyncing = true;
-        try {
-            await _apiSyncAll();
-            // 重新渲染当前页面以显示最新数据
-            if (typeof currentPage !== 'undefined' && currentPage) {
-                renderPage(currentPage);
-            }
-        } catch(e) { /* 静默失败 */ }
-        _isSyncing = false;
-    }, 5000);
-}
-function stopAutoSync() {
-    if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
-}
-
 // ==================== 数据定义 ====================
 const ROLES = {
     system_admin: { name: '系统管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','sales','sales_order','sales_return','sales_stats','sales_ranking','member','member_level','member_points','member_exchange','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax','employee','employee_schedule','employee_attendance','employee_salary','supplier','supplier_contract','supplier_evaluation','system_users','system_roles','system_dept','system_post','system_menu','system_logs','system_login_logs','system_backup','system_monitor','system_settings','system_params','system_dict','system_notice','system_maintenance','employee_position'] },
@@ -591,7 +601,8 @@ const ROLES = {
     cashier: { name: '收银员', pages: ['dashboard','sales','sales_order','sales_stats','sales_ranking','member','member_points'] },
     purchaser: { name: '采购员', pages: ['dashboard','purchase_in','supplier','supplier_contract','supplier_evaluation','inventory'] },
     warehouse: { name: '仓管员', pages: ['dashboard','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','inventory'] },
-    finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax','sales_order'] },
+    inventory: { name: '库存管理员', pages: ['dashboard','inventory','warehouse','inventory_check','inventory_alert','shelve','inventory_writeoff','warehouse_zones','purchase_in'] },
+    finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax'] },
 };
 
 const USERS = {
@@ -603,6 +614,7 @@ const USERS = {
     cashier: { pass: '123456', role: 'cashier', name: '收银员' },
     purchase: { pass: '123456', role: 'purchaser', name: '采购员' },
     warehouse: { pass: '123456', role: 'warehouse', name: '仓管员' },
+    stock: { pass: '123456', role: 'inventory', name: '库存管理员' },
     finance: { pass: '123456', role: 'finance', name: '财务' }
 };
 
@@ -883,7 +895,6 @@ function loadData(key) {
 }
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
-    // 自动推送数据到服务器（多用户同步）
     if (_apiToken) {
         fetch(API_BASE + '/api/sync/' + key, {
             method: 'POST',
@@ -1106,6 +1117,7 @@ function canAccess(page) {
     const rolePages = ROLES[currentUser.role]?.pages || [];
     return rolePages.includes(page);
 }
+function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; return true; }
 
 async function navigateTo(page) {
     if (!canAccess(page)) {
@@ -1121,7 +1133,6 @@ async function navigateTo(page) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
-    // 先同步最新数据，再渲染页面
     if (_apiToken && !_isSyncing) {
         try { await _apiSyncAll(); } catch(e) {}
     }
@@ -1853,7 +1864,7 @@ function init_promotion() {
             return '<span class="badge badge-on">进行中</span>';
         }}],
         [{label:'编辑',action:editPromotion},{label:'删除',action:deletePromotion}],
-        (item,term)=>item.name.includes(term)||item.productName.includes(term)
+        (item,term)=>item.name.includes(term)||item.productId
     );
     refreshCurrentTable();
 }
@@ -2819,10 +2830,11 @@ pageRenderers['member'] = function() {
             </div>
             <div class="action-bar">
                 <div class="btn-group">
-                    <button class="btn btn-primary" onclick="addMember()">新增会员</button>
-                    <button class="btn btn-outline" onclick="exportMembers()">导出会员</button>
+                    ${currentUser.role!=="cashier"?`<button class="btn btn-primary" onclick="addMember()">新增会员</button>`:""}
+${currentUser.role!=="cashier"?`                    <button class="btn btn-outline" onclick="exportMembers()">导出会员</button>
                     <button class="btn btn-outline" onclick="navigateTo('member_level')">等级管理</button>
                     <button class="btn btn-outline" onclick="navigateTo('member_points')">积分管理</button>
+`:""}
                 </div>
                 <div class="search-area">
                     <input type="text" placeholder="搜索姓名/手机号/卡号..." oninput="filterTable(this.value)" autocomplete="off">
@@ -2876,10 +2888,10 @@ function init_member() {
              {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)},
              {key:'status',render:m=>`<span class="badge ${(m.status||'正常')==='正常'?'badge-on':'badge-off'}">${m.status||'正常'}</span>`},
              {key:'lastConsumeDate',render:m=>m.lastConsumeDate||'-'}],
-            [{label:'详情',action:viewMember},{label:'编辑',action:editMember},
+            (currentUser.role==='cashier'?[{label:'详情',action:viewMember},{label:'消费记录',action:viewMemberConsumption}]:[{label:'详情',action:viewMember},{label:'编辑',action:editMember},
              {label:m=>(m.status||'正常')==='正常'?'冻结':'解冻',action:toggleMemberStatus},
              {label:'消费记录',action:viewMemberConsumption},
-             {label:'删除',action:deleteMember}],
+             {label:'删除',action:deleteMember}]),
             (item,term)=>item.name.includes(term)||item.phone.includes(term)||(item.cardNo||'').includes(term)
         );
     };
@@ -3189,10 +3201,10 @@ pageRenderers['member_points'] = function() {
             </div>
             <div class="action-bar">
                 <div class="btn-group">
-                    <button class="btn btn-outline" onclick="showPointsRecords()">积分流水</button>
-                    <button class="btn btn-outline" onclick="batchAddPoints()">批量赠送积分</button>
-                    <button class="btn btn-outline" onclick="batchClearPoints()">批量积分清零</button>
-                    <button class="btn btn-outline" onclick="navigateTo('member_exchange')">奖品管理</button>
+                    ${currentUser.role!=="cashier"?`<button class="btn btn-outline" onclick="showPointsRecords()">积分流水</button>`:""}
+                    ${currentUser.role!=="cashier"?`<button class="btn btn-outline" onclick="batchAddPoints()">批量赠送积分</button>`:""}
+                    ${currentUser.role!=="cashier"?`<button class="btn btn-outline" onclick="batchClearPoints()">批量积分清零</button>`:""}
+                    ${currentUser.role!=="cashier"?`<button class="btn btn-outline" onclick="navigateTo('member_exchange')">奖品管理</button>`:""}
                 </div>
                 <div class="search-area"><input type="text" placeholder="搜索会员姓名..." oninput="filterTable(this.value)" autocomplete="off"></div>
             </div>
@@ -3215,7 +3227,7 @@ function init_member_points() {
         }},
          {key:'points',render:m=>`<span style="font-weight:600;color:${m.points>0?'#2b6e3c':'#819e73'};">${m.points}</span>`},
          {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)}],
-        [{label:'积分调整',action:adjustPoints},{label:'积分兑换',action:exchangePoints},{label:'清零',action:clearMemberPoints},{label:'流水',action:viewMemberPoints}],
+        (currentUser.role==='cashier'?[{label:'流水',action:viewMemberPoints}]:[{label:'积分调整',action:adjustPoints},{label:'积分兑换',action:exchangePoints},{label:'清零',action:clearMemberPoints},{label:'流水',action:viewMemberPoints}]),
         (item,term)=>item.name.includes(term)||item.phone.includes(term)
     );
     refreshCurrentTable();
@@ -3448,7 +3460,7 @@ pageRenderers['purchase_in'] = function() {
         ['采购单号','供应商','商品','数量','单价','金额','日期','采购员'],
         orders,
         [{label:'详情',action:viewPurchase}],
-        `<button class="btn btn-primary" onclick="addPurchase()">新增采购单</button>`,
+        `${canEdit()&&currentUser.role!=='warehouse'?'<button class="btn btn-primary" onclick="addPurchase()">新增采购单</button>':''}`,
         '搜索采购单号或供应商'
     );
 };
@@ -3546,7 +3558,7 @@ pageRenderers['shelve'] = function() {
     return renderTablePage('商品上架', '仓库管理 / 上架管理',
         ['商品名称','分类','库存','当前状态','零售价'],
         products,
-        [{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}],
+        (canEdit()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
         `<button class="btn btn-outline" onclick="navigateTo('shelve')">刷新</button>`,
         '搜索商品'
     );
@@ -3554,7 +3566,7 @@ pageRenderers['shelve'] = function() {
 function init_shelve() {
     refreshCurrentTable = () => renderTableData(loadData('products'),
         [{key:'name'},{key:'category'},{key:'stock'},{key:'status',render:p=>`<span class="badge ${p.status==='上架'?'badge-on':'badge-off'}">${p.status}</span>`},{key:'retailPrice',render:p=>'¥'+formatMoney(p.retailPrice)}],
-        [{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}],
+        (canEdit()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
         (item,term)=>item.name.includes(term)
     );
     refreshCurrentTable();
@@ -3586,7 +3598,7 @@ pageRenderers['inventory_writeoff'] = function() {
     return renderTablePage('库存核销', '仓库管理 / 核销管理',
         ['商品名称','库存','单位','到期日期','状态'],
         products.filter(p=>p.expiryDate && new Date(p.expiryDate)-new Date()< 30*24*60*60*1000),
-        [{label:'核销',action:writeOff}],
+        (canEdit()?[{label:'核销',action:writeOff}]:[]),
         `<button class="btn btn-outline" onclick="navigateTo('inventory_writeoff')">刷新</button>`,
         '搜索商品'
     );
@@ -3600,7 +3612,7 @@ function init_inventory_writeoff() {
             if(diff<=7) return `<span class="badge badge-warn">临期(${diff}天)</span>`;
             return p.expiryDate;
         }},{key:'status'}],
-        [{label:'核销',action:writeOff}],
+        (canEdit()?[{label:'核销',action:writeOff}]:[]),
         (item,term)=>item.name.includes(term)
     );
     refreshCurrentTable();
@@ -3635,7 +3647,7 @@ pageRenderers['inventory_check'] = function() {
     return renderTablePage('库存盘点', '仓库管理 / 盘点管理',
         ['盘点单号','盘点日期','盘点范围','状态','盘点人','备注'],
         tasks,
-        [{label:'详情',action:viewCheckTask},{label:'执行',action:executeCheck}],
+        [{label:'详情',action:viewCheckTask},...(canEdit()?[{label:'执行',action:executeCheck}]:[])],
         `<button class="btn btn-primary" onclick="createCheckTask()">新建盘点任务</button><button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('warehouse')}>🏭 仓库概览</button><button class="btn btn-outline" ${btnLink('inventory_check')}>刷新</button>`,
         '搜索盘点单号'
     );
@@ -3648,7 +3660,7 @@ function init_inventory_check() {
             if(t.status==='已完成') return '<span class="badge badge-on">已完成</span>';
             return '<span class="badge badge-off">'+t.status+'</span>';
         }},{key:'checker'},{key:'note'}],
-        [{label:'详情',action:viewCheckTask},{label:'执行',action:executeCheck}],
+        [{label:'详情',action:viewCheckTask},...(canEdit()?[{label:'执行',action:executeCheck}]:[])],
         (item,term)=>item.taskNo.includes(term)||item.note.includes(term)
     );
     refreshCurrentTable();
@@ -3775,7 +3787,7 @@ pageRenderers['inventory_alert'] = function() {
         <div class="page-body">
             <div class="dashboard-grid" id="alertStats"></div>
             ${renderTablePageContent('预警商品列表', ['商品名称','分类','当前库存','预警类型','预警阈值','预警信息'],
-                alerts, [{label:'处理',action:handleAlert}],
+                alerts, (canEdit()?[{label:'处理',action:handleAlert}]:[]),
                 `<button class="btn btn-primary" onclick="manageAlertSettings()">预警设置</button><button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('inventory_check')}>🔍 库存盘点</button><button class="btn btn-outline" ${btnLink('inventory_alert')}>刷新</button>`)}
         </div>
     </div>`;
@@ -3820,7 +3832,7 @@ function init_inventory_alert() {
         // 渲染表格
         renderTableData(alerts,
             [{key:'name'},{key:'category'},{key:'stock',render:a=>`<span style="color:#c23d2e;font-weight:600;">${a.stock}</span>`},{key:'alertType',render:a=>`<span class="badge ${a.alertType==='库存不足'?'badge-off':a.alertType==='库存过高'?'badge-warn':'badge-warn'}">${a.alertType}</span>`},{key:'threshold'},{key:'alertMsg'}],
-            [{label:'处理',action:handleAlert}],
+            (canEdit()?[{label:'处理',action:handleAlert}]:[]),
             (item,term)=>item.name.includes(term)||item.alertType.includes(term)
         );
     };
@@ -4293,6 +4305,18 @@ pageRenderers['finance_cost'] = function() {
     const maxCatCost = catEntries.length > 0 ? catEntries[0][1] : 1;
     const prodEntries = Object.values(prodCost).sort((a,b) => b.cost - a.cost);
 
+    // Purchase order costs for the period
+    const filteredPurchases = pOrders.filter(o => inPeriod(o));
+    let totalPurchaseCost = 0;
+    const purchaseBySupplier = {};
+    filteredPurchases.forEach(o => {
+        totalPurchaseCost += o.amount || 0;
+        const s = o.supplier || '未知';
+        purchaseBySupplier[s] = (purchaseBySupplier[s] || 0) + (o.amount || 0);
+    });
+    const supplierEntries = Object.entries(purchaseBySupplier).sort((a,b) => b[1] - a[1]);
+    const maxSupplierCost = supplierEntries.length > 0 ? supplierEntries[0][1] : 1;
+
     // Trend: last 6 periods
     const trendData = [];
     for (let i = 5; i >= 0; i--) {
@@ -4369,6 +4393,7 @@ pageRenderers['finance_cost'] = function() {
                 <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" style="color:#2a7a3b;">¥${formatMoney(totalRevenue)}</div><div class="stat-label">当期销售额</div></div>
                 <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num" style="color:${grossProfit>=0?'#2a7a3b':'#c23d2e'};">¥${formatMoney(grossProfit)}</div><div class="stat-label">毛利润</div></div>
                 <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num" style="color:${grossMargin>=10?'#2a7a3b':grossMargin>=0?'#b87c1a':'#c23d2e'};">${grossMargin}%</div><div class="stat-label">毛利率</div></div>
+                <div class="stat-card"><div class="stat-icon">📥</div><div class="stat-num" style="color:#1565c0;">¥${formatMoney(totalPurchaseCost)}</div><div class="stat-label">当期采购成本</div></div>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;">
                 <div style="background:white;border-radius:20px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
@@ -4413,6 +4438,24 @@ pageRenderers['finance_cost'] = function() {
                         return `<tr><td ${invAttrs}>${e.name}</td><td>${e.category}</td><td>¥${formatMoney(e.price)}</td><td>${e.qty}</td><td style="color:#c23d2e;font-weight:500;">¥${formatMoney(e.cost)}</td><td>${pct}%</td></tr>`;
                     }).join('')}</tbody>
                 </table>
+            </div>
+            <div style="background:white;border-radius:20px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                    <h3 style="color:#1f3b2c;font-size:0.95rem;">当期采购订单成本明细</h3>
+                </div>
+                <table class="data-table" style="min-width:700px;" id="purchaseCostTable">
+                    <thead><tr><th>采购单号</th><th>供应商</th><th>商品</th><th>数量</th><th>单价</th><th>金额</th><th>日期</th><th>采购员</th></tr></thead>
+                    <tbody>${filteredPurchases.length===0 ? '<tr><td colspan="8" style="text-align:center;color:#819e73;padding:24px;">当期无采购入库数据</td></tr>' : filteredPurchases.map(o=>{
+                        return '<tr><td>'+o.orderNo+'</td><td>'+o.supplier+'</td><td>'+o.productName+'</td><td>'+o.qty+'</td><td>¥'+formatMoney(o.price)+'</td><td style="color:#1565c0;font-weight:500;">¥'+formatMoney(o.amount)+'</td><td>'+o.date+'</td><td>'+o.purchaser+'</td></tr>';
+                    }).join('')}</tbody>
+                </table>
+                <div style="margin-top:12px;">
+                    <h4 style="color:#1f3b2c;font-size:0.85rem;margin-bottom:8px;">供应商采购成本占比</h4>
+                    ${supplierEntries.length===0 ? '<p style="color:#819e73;font-size:0.78rem;">当期无采购数据</p>' : supplierEntries.map(([sup, cost]) => {
+                        const pct = totalPurchaseCost>0?(cost/totalPurchaseCost*100).toFixed(1):'0';
+                        return '<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:2px;"><span>'+sup+'</span><span style="color:#426b39;">¥'+formatMoney(cost)+' ('+pct+'%)</span></div><div class="rank-bar"><div class="rank-bar-fill" style="width:'+Math.max(cost/maxSupplierCost*100,2)+'%;background:linear-gradient(90deg,#1565c0,#42a5f5);"></div></div></div>';
+                    }).join('')}
+                </div>
             </div>
             <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="btn btn-outline" ${btnLink('finance')}>💼 财务核算</button>

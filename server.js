@@ -63,6 +63,62 @@ function paginate(items, page = 1, pageSize = 10) {
   return { list, total, page, pageSize, totalPages };
 }
 
+// Sync SQL tables to data_store JSON after mutations (checkout, purchase, inventory changes, etc.)
+function syncAffectedTablesToDataStore() {
+  const upsert = db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)');
+
+  // Products: convert snake_case SQL → camelCase JSON
+  const products = db.prepare('SELECT * FROM products').all();
+  upsert.run('products', JSON.stringify(products.map(p => ({
+    id: p.id, code: p.code, name: p.name, category: p.category,
+    supplier: p.supplier, purchasePrice: p.purchase_price, retailPrice: p.retail_price,
+    stock: p.stock, unit: p.unit, status: p.status, sales: p.sales,
+    produceDate: p.produce_date, expiryDate: p.expiry_date,
+    description: p.description, imageUrl: p.image_url
+  }))));
+
+  // SalesOrders
+  const salesOrders = db.prepare('SELECT * FROM sales_orders ORDER BY id DESC').all();
+  upsert.run('salesOrders', JSON.stringify(salesOrders.map(o => ({
+    id: o.id, orderNo: o.order_no, memberId: o.member_id, memberName: o.member_name,
+    memberPhone: o.member_phone, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
+    totalAmount: o.total_amount, discountAmount: o.discount_amount, finalAmount: o.final_amount,
+    couponId: o.coupon_id, couponName: o.coupon_name, couponDiscount: o.coupon_discount,
+    payMethod: o.pay_method, operator: o.operator, orderDate: o.order_date
+  }))));
+
+  // Members
+  const members = db.prepare('SELECT * FROM members').all();
+  upsert.run('members', JSON.stringify(members.map(m => ({
+    id: m.id, cardNo: m.card_no, name: m.name, gender: m.gender,
+    birthday: m.birthday, phone: m.phone, email: m.email, address: m.address,
+    level: m.level, points: m.points, joinDate: m.join_date,
+    totalSpent: m.total_spent, status: m.status, lastConsumeDate: m.last_consume_date,
+    source: m.source
+  }))));
+
+  // FinanceLedger
+  const ledger = db.prepare('SELECT * FROM finance_ledger ORDER BY id DESC').all();
+  upsert.run('financeLedger', JSON.stringify(ledger.map(l => ({
+    id: l.id, date: l.date, type: l.type, category: l.category,
+    amount: l.amount, account: l.account, summary: l.summary, voucherNo: l.voucher_no
+  }))));
+
+  // MemberPointsRecords
+  const pointsRecords = db.prepare('SELECT * FROM member_points_records ORDER BY id DESC').all();
+  upsert.run('memberPointsRecords', JSON.stringify(pointsRecords.map(r => ({
+    id: r.id, memberId: r.member_id, memberName: r.member_name,
+    type: r.type, points: r.points, balance: r.balance,
+    time: r.time, operator: r.operator, note: r.note
+  }))));
+
+  // SystemLogs
+  const logs = db.prepare('SELECT * FROM system_logs ORDER BY id DESC').all();
+  upsert.run('systemLogs', JSON.stringify(logs.map(l => ({
+    id: l.id, time: l.time, user: l.user, action: l.action
+  }))));
+}
+
 // ==================== AUTH ROUTES ====================
 
 app.post('/api/auth/login', (req, res) => {
@@ -156,6 +212,7 @@ app.post('/api/products', authMiddleware, (req, res) => {
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `新增商品: ${p.name}`);
+    syncAffectedTablesToDataStore();
     res.json(ok(product));
   } catch (e) {
     res.json(err(e.message));
@@ -171,6 +228,7 @@ app.put('/api/products/:id', authMiddleware, (req, res) => {
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `编辑商品: ${p.name}`);
+    syncAffectedTablesToDataStore();
     res.json(ok(product));
   } catch (e) {
     res.json(err(e.message));
@@ -184,6 +242,7 @@ app.delete('/api/products/:id', authMiddleware, (req, res) => {
     db.prepare('DELETE FROM products WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `删除商品: ${product.name}`);
+    syncAffectedTablesToDataStore();
     res.json(okMsg('删除成功'));
   } catch (e) {
     res.json(err(e.message));
@@ -277,6 +336,7 @@ app.post('/api/members', authMiddleware, (req, res) => {
     const member = db.prepare('SELECT * FROM members WHERE id = ?').get(result.lastInsertRowid);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `新增会员: ${m.name}`);
+    syncAffectedTablesToDataStore();
     res.json(ok({ ...member, cardNo: member.card_no }));
   } catch (e) {
     res.json(err(e.message));
@@ -293,6 +353,7 @@ app.put('/api/members/:id', authMiddleware, (req, res) => {
     const member = db.prepare('SELECT * FROM members WHERE id = ?').get(req.params.id);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `编辑会员: ${m.name}`);
+    syncAffectedTablesToDataStore();
     res.json(ok({ ...member, cardNo: member.card_no }));
   } catch (e) {
     res.json(err(e.message));
@@ -761,6 +822,9 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
 
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `收银: ${orderNo} ¥${finalAmount.toFixed(2)}`);
+
+    // Sync affected tables to data_store for multi-user data consistency
+    syncAffectedTablesToDataStore();
 
     res.json(ok({ orderNo, totalAmount, discountAmount, couponDiscount, finalAmount, items }));
   } catch (e) {
