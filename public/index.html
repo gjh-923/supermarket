@@ -407,32 +407,8 @@ async function _apiSyncAll() {
         const allData = await _apiGet('/api/export/all');
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
-            // 服务器返回空数组时，保留本地数据不覆盖
-            if (Array.isArray(data) && data.length === 0) {
-                const existing = localStorage.getItem('sms_' + camelKey);
-                if (existing) {
-                    try {
-                        const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed) && parsed.length > 0) continue;
-                    } catch(e) {}
-                }
-            }
-            // 对于有数据的表：合并服务器和本地数据（以服务器为准，但保留本地独有的记录）
+            // 服务器数据永远为准（多用户同步核心）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
-            if (Array.isArray(data) && data.length > 0) {
-                const existing = localStorage.getItem('sms_' + camelKey);
-                if (existing) {
-                    try {
-                        const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed) && parsed.length > data.length) {
-                            // 本地数据更多，保留本地数据（用户可能添加了记录）
-                            console.log('保留本地' + camelKey + ': 本地' + parsed.length + '条 > 服务器' + data.length + '条');
-                            continue;
-                        }
-                    } catch(e) {}
-                }
-            }
-            // 数据规范化：解析 JSON 字符串字段，修正字段名不匹配
             transformed = _normalizeData(camelKey, transformed);
             localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
         }
@@ -1104,6 +1080,12 @@ function navigateTo(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
     renderPage(page);
+    // 切换页面时同步最新数据
+    if (_apiToken && !_isSyncing) {
+        _apiSyncAll().then(() => {
+            if (currentPage === page) renderPage(page);
+        }).catch(() => {});
+    }
 }
 function cardLink(page, title) {
     return canAccess(page) ? `onclick="navigateTo('${page}')" style="cursor:pointer;" title="${title}"` : 'style="opacity:0.5;cursor:not-allowed;" title="无权限访问"';
