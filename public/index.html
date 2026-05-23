@@ -175,15 +175,17 @@
         .schedule-calendar { background: white; border-radius: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); overflow: visible; }
         .schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f5faf0; border-bottom: 1px solid #edf3e7; gap: 8px; flex-wrap: wrap; }
         .schedule-header button { font-size: 0.75rem; padding: 6px 12px; }
-        .schedule-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-        .schedule-cell { border: 1px solid #f0f4eb; padding: 3px 2px; min-height: 48px; cursor: pointer; transition: 0.15s; overflow: hidden; display: flex; flex-direction: column; gap: 0px; }
-        .schedule-cell:hover { background: #f0f7e8; }
-        .schedule-cell.header { background: #f5faf0; font-weight: 600; text-align: center; cursor: default; min-height: auto; padding: 5px 2px; font-size: 0.65rem; color: #426b39; }
-        .schedule-cell .day-num { font-size: 0.72rem; font-weight: 600; color: #1f3b2c; margin-bottom: 1px; }
-        .schedule-cell .shift-tag { font-size: 0.5rem; padding: 0px 4px; border-radius: 6px; margin: 0; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.2; }
+        .schedule-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .schedule-table th { padding: 6px 2px; text-align: center; font-size: 0.65rem; font-weight: 600; background: #f5faf0; }
+        .schedule-table td.sch-cell { border: 1px solid #edf3e7; padding: 3px 2px; height: 50px; cursor: pointer; transition: 0.15s; vertical-align: top; text-align: left; }
+        .schedule-table td.sch-cell:hover { background: #f0f7e8 !important; }
+        .schedule-table td.sch-empty { border: 1px solid #f7f9f5; background: #fafcfa; }
+        .sch-day { font-size: 0.7rem; font-weight: 600; color: #1f3b2c; margin-bottom: 1px; }
+        .sch-cell .shift-tag { font-size: 0.48rem; padding: 0px 3px; border-radius: 5px; margin: 0; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.2; }
         .shift-早班 { background: #fff7db; color: #b87c1a; }
         .shift-中班 { background: #e3f2fd; color: #1565c0; }
         .shift-晚班 { background: #f3e5f5; color: #7b1fa2; }
+        .shift-休息 { background: #fce4e4; color: #c23d2e; }
         .shift-休息 { background: #fce4e4; color: #c23d2e; }
         .att-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
         .att-stat-card { background: white; border-radius: 16px; padding: 16px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.03); }
@@ -739,11 +741,10 @@ const DEFAULT_DATA = {
         { id:4,cardNo:'HY20240003',name:'赵六',gender:'女',birthday:'1992-03-18',phone:'13800001004',email:'zhaoliu@email.com',address:'北京市丰台区南三环16号',level:'普通会员',points:120,joinDate:'2024-05-01',totalSpent:1200,status:'冻结',lastConsumeDate:'2024-05-10',source:'活动推广' }
     ],
     memberLevels: [
-        { name:'钻石会员', minSpent:50000, discount:85, pointsRate:2, cardColor:'#4db8ff', benefits:'尊享8.5折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时/次 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' },
-        { name:'铂金会员', minSpent:20000, discount:90, pointsRate:1.8, cardColor:'#b39ddb', benefits:'9折优惠 | 1.8倍积分加速 | 每月8号三倍积分 | 生日月赠1000积分+蛋糕券 | 专属客服经理 | 免费停车3小时 | 48小时无忧退换' },
-        { name:'黄金会员', minSpent:5000, discount:94, pointsRate:1.5, cardColor:'#f5a623', benefits:'9.4折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验' },
-        { name:'白银会员', minSpent:1000, discount:97, pointsRate:1.2, cardColor:'#8eb8d0', benefits:'9.7折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
-        { name:'青铜会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#d4895a', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价' }
+        { name:'钻石会员', minSpent:20000, discount:88, pointsRate:2, cardColor:'#2196F3', benefits:'尊享8.8折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' },
+        { name:'黄金会员', minSpent:5000, discount:93, pointsRate:1.5, cardColor:'#FF9800', benefits:'9.3折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验 | 免费停车2小时' },
+        { name:'白银会员', minSpent:1000, discount:96, pointsRate:1.2, cardColor:'#607D8B', benefits:'9.6折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
+        { name:'青铜会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#8D6E63', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价日' }
     ],
     suppliers: [
         { id:1,code:'GYS20240001',name:'美味园',contact:'张经理',phone:'13900001001',email:'meiweiyuan@supplier.com',address:'北京市朝阳区食品工业园A区',products:'糕点类',level:'A级',status:'合作中',cooperationDate:'2023-01-10',bankAccount:'6222021234567890',taxId:'91110108MA01XXXX1X',notes:'品质稳定，供货及时，长期合作伙伴',supplyCapacity:'月供5000件' },
@@ -993,6 +994,9 @@ function migrateData() {
         }
     });
     if (levelsChanged) saveData('memberLevels', levels);
+
+    // 自动匹配所有会员等级（按积分）
+    autoMatchAllMemberLevels();
 
     // 合同到期自动更新：合同到期→状态标记为"已到期"，对应供应商→"暂停"
     const contracts = loadData('supplierContracts');
@@ -4176,7 +4180,7 @@ pageRenderers['finance'] = function() {
                 <div class="stat-card" ${cardLink('finance_profit','点击查看利润表')}><div class="stat-icon">📊</div><div class="stat-num">¥${formatMoney(grossProfit)}</div><div class="stat-label">毛利润${canAccess('finance_profit')?' →':''}</div></div>
                 <div class="stat-card" ${cardLink('finance_ledger','点击查看资金流水')}><div class="stat-icon">💸</div><div class="stat-num">¥${formatMoney(totalExpense)}</div><div class="stat-label">费用支出${canAccess('finance_ledger')?' →':''}</div></div>
                 <div class="stat-card" ${cardLink('finance_profit','点击查看利润表详情')}><div class="stat-icon">🏆</div><div class="stat-num">¥${formatMoney(netProfit)}</div><div class="stat-label">净利润${canAccess('finance_profit')?' →':''}</div></div>
-                <div class="stat-card" ${canAccess('finance_profit') ? `onclick="showProfitMarginDetail()" style="cursor:pointer;border:2px solid #3b9e5c;" title="点击查看净利率分析"` : 'style="opacity:0.5;cursor:not-allowed;border:2px solid #ddd;" title="无权限访问"'}><div class="stat-icon">📈</div><div class="stat-num">${profitMargin}%</div><div class="stat-label">净利率${canAccess('finance_profit')?' 🔍':''}</div></div>
+                <div class="stat-card" ${canAccess('finance_profit') ? `onclick="showProfitMarginDetail()" style="cursor:pointer;" title="点击查看净利率分析"` : 'style="opacity:0.5;cursor:not-allowed;" title="无权限访问"'}><div class="stat-icon">📈</div><div class="stat-num">${profitMargin}%</div><div class="stat-label">净利率${canAccess('finance_profit')?' 🔍':''}</div></div>
                 <div class="stat-card" ${cardLink('sales_order','点击查看销售订单')}><div class="stat-icon">📄</div><div class="stat-num">${orders.length}</div><div class="stat-label">销售订单数${canAccess('sales_order')?' →':''}</div></div>
                 <div class="stat-card" ${cardLink('purchase_in','点击查看采购入库')}><div class="stat-icon">📥</div><div class="stat-num">${pOrders.length}</div><div class="stat-label">采购单数${canAccess('purchase_in')?' →':''}</div></div>
             </div>
@@ -4699,49 +4703,31 @@ function jumpCostPeriod() {
 let _finSelectedPage = null;
 function _finSelectModule(page, el) {
     _finSelectedPage = page;
-    // Highlight selected card
-    document.querySelectorAll('.fin-module-card').forEach(c => c.style.borderColor = 'transparent');
-    if (el) el.style.borderColor = '#3b9e5c';
-    // Render selected module content
+    document.querySelectorAll('.fin-menu-item').forEach(c => { c.style.background = 'transparent'; c.style.borderColor = 'transparent'; });
+    if (el) { el.style.background = '#f0f7e8'; el.style.borderColor = '#3b9e5c'; }
     const panel = document.getElementById('finDetailPanel');
-    if (!panel) return;
-    if (pageRenderers[page]) {
-        panel.innerHTML = pageRenderers[page]();
-        // Call init if exists
-        const initFn = window['init_' + page];
-        if (typeof initFn === 'function') initFn();
-    }
+    if (!panel || !pageRenderers[page]) return;
+    panel.innerHTML = '<div style="padding:20px;">' + pageRenderers[page]() + '</div>';
+    const initFn = window['init_' + page];
+    if (typeof initFn === 'function') initFn();
+    // Re-run scripts that were in the original page
+    if (typeof refreshCurrentTable === 'function') { /* preserve outer refresh */ }
 }
 function finParentPage(title, breadcrumb, children) {
-    const firstPage = children[0]?.page;
-    _finSelectedPage = firstPage;
-    const ledger = loadData('financeLedger');
-    const recentLedger = [...ledger].slice(-6).reverse();
-    const totalIncome = ledger.filter(l=>l.amount>0).reduce((s,l)=>s+l.amount,0);
-    const totalExpense = ledger.filter(l=>l.amount<0).reduce((s,l)=>s+Math.abs(l.amount),0);
-    const orders = loadData('salesOrders');
-    const totalSales = orders.reduce((s,o)=>s+o.totalAmount,0);
-    // Pre-render first module content
+    _finSelectedPage = children[0]?.page;
     let previewContent = '';
-    if (firstPage && pageRenderers[firstPage]) {
-        previewContent = pageRenderers[firstPage]();
+    if (_finSelectedPage && pageRenderers[_finSelectedPage]) {
+        previewContent = '<div style="padding:20px;">' + pageRenderers[_finSelectedPage]() + '</div>';
     }
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
-    <div class="page-body" style="display:flex;gap:16px;flex-wrap:wrap;">
-        <div style="flex:0 0 260px;display:flex;flex-direction:column;gap:8px;">
-            ${children.map(c=>`<div class="sys-card fin-module-card fade-in" onclick="_finSelectModule('${c.page}',this)" style="flex-direction:row;text-align:left;gap:12px;padding:14px 16px;border:2px solid ${_finSelectedPage===c.page?'#3b9e5c':'transparent'};cursor:pointer;"><div class="sys-card-icon" style="font-size:1.4rem;width:40px;height:40px;border-radius:12px;flex-shrink:0;">${c.icon}</div><div style="flex:1;min-width:0;"><div class="sys-card-name" style="margin-bottom:2px;font-size:0.85rem;">${c.name}</div><div class="sys-card-desc" style="font-size:0.68rem;">${c.desc}</div></div><span style="color:#b8d9a4;font-size:1rem;flex-shrink:0;">▸</span></div>`).join('')}
-            <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;">¥${formatMoney(totalSales)}</div><div class="stat-label" style="font-size:0.6rem;">总销售额</div></div>
-                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;color:#2a7a3b;">¥${formatMoney(totalIncome)}</div><div class="stat-label" style="font-size:0.6rem;">总收入</div></div>
-                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;color:#c23d2e;">¥${formatMoney(totalExpense)}</div><div class="stat-label" style="font-size:0.6rem;">总支出</div></div>
-                <div class="stat-card" style="padding:10px 8px;"><div class="stat-num" style="font-size:0.9rem;">${ledger.length}</div><div class="stat-label" style="font-size:0.6rem;">流水记录</div></div>
-            </div>
-            <div style="background:white;border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.04);font-size:0.68rem;">
-                <div style="font-weight:600;color:#1f3b2c;margin-bottom:8px;">最近资金流水</div>
-                ${recentLedger.length===0 ? '<span style="color:#819e73;">暂无记录</span>' : recentLedger.map(l=>`<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f5faf0;"><span>${l.date||''} ${l.category||''}</span><span style="color:${l.amount>=0?'#2a7a3b':'#c23d2e'};">¥${formatMoney(l.amount)}</span></div>`).join('')}
-            </div>
+    <div class="page-body" style="display:flex;gap:0;padding:0;">
+        <div style="flex:0 0 200px;background:white;border-radius:16px 0 0 16px;padding:12px 0;box-shadow:2px 0 8px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:2px;min-height:500px;">
+            <div style="padding:8px 16px;font-size:0.65rem;color:#819e73;text-transform:uppercase;letter-spacing:1px;">功能菜单</div>
+            ${children.map(c=>`<div class="fin-menu-item" onclick="_finSelectModule('${c.page}',this)" style="padding:11px 16px;cursor:pointer;border-left:3px solid ${_finSelectedPage===c.page?'#3b9e5c':'transparent'};background:${_finSelectedPage===c.page?'#f0f7e8':'transparent'};transition:all 0.2s;display:flex;align-items:center;gap:10px;font-size:0.78rem;color:#1f3b2c;margin:0 8px;border-radius:8px;">
+                <span style="font-size:1.1rem;width:24px;text-align:center;">${c.icon}</span><span>${c.name}</span>
+            </div>`).join('')}
         </div>
-        <div style="flex:1;min-width:400px;background:white;border-radius:20px;padding:0;box-shadow:0 2px 12px rgba(0,0,0,0.04);overflow:hidden;" id="finDetailPanel">
+        <div style="flex:1;background:#f9fbf7;border-radius:0 16px 16px 0;overflow-y:auto;min-height:500px;" id="finDetailPanel">
             ${previewContent}
         </div>
     </div></div>`;
@@ -5064,57 +5050,66 @@ pageRenderers['employee_schedule'] = function() {
     const now = new Date();
     if (!scheduleYear) { scheduleYear = now.getFullYear(); scheduleMonth = now.getMonth() + 1; }
     const todayStr = getToday();
-    const firstDay = new Date(scheduleYear, scheduleMonth - 1, 1);
-    const lastDay = new Date(scheduleYear, scheduleMonth, 0);
-    const startDayOfWeek = firstDay.getDay();
-    const daysInMonth = lastDay.getDate();
+    const daysInMonth = new Date(scheduleYear, scheduleMonth, 0).getDate();
+    const startDayOfWeek = new Date(scheduleYear, scheduleMonth - 1, 1).getDay();
     const schedules = loadData('schedules');
     const employees = loadData('employees');
-    const dayNames = ['日','一','二','三','四','五','六'];
     const shiftColors = { '早班': ['#fff7db','#e8c547','#b87c1a'], '中班': ['#e3f2fd','#90caf9','#1565c0'], '晚班': ['#f3e5f5','#ce93d8','#7b1fa2'], '休息': ['#fce4e4','#ef9a9a','#c23d2e'] };
-    let gridHtml = dayNames.map((d,i)=>{
-        const isWeekend = i===0||i===6;
-        return `<div class="schedule-cell header" style="color:${isWeekend?'#c23d2e':'#426b39'};">${d}</div>`;
-    }).join('');
-    for (let i=0; i<startDayOfWeek; i++) { gridHtml += '<div class="schedule-cell" style="background:#fafafa;"></div>'; }
-    for (let d=1; d<=daysInMonth; d++) {
-        const dateStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const isToday = dateStr === todayStr;
-        const isWeekend = new Date(scheduleYear, scheduleMonth-1, d).getDay()%6===0;
-        const daySchedules = schedules.filter(s=>s.date===dateStr);
-        let tagsHtml = '';
-        const maxShow = 3;
-        daySchedules.slice(0, maxShow).forEach(s=>{
-            const emp = employees.find(e=>e.id===s.employee_id);
-            const shiftName = s.shift||'休息';
-            const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
-            if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name.slice(0,2)}</span>`;
-        });
-        if (daySchedules.length > maxShow) tagsHtml += `<span class="shift-tag" style="background:#f5f5f5;color:#819e73;border:1px solid #ddd;font-weight:600;">+${daySchedules.length-maxShow}</span>`;
-        const todayStyle = isToday ? 'background:#f0f7e8;border:2px solid #5cb85c;box-shadow:0 0 8px rgba(92,184,92,0.2);' : isWeekend ? 'background:#fdfdf7;' : '';
-        gridHtml += `<div class="schedule-cell" onclick="openScheduleDay('${dateStr}')" style="${todayStyle}"><div class="day-num" style="${isToday?'color:#2a7a3b;font-weight:700;':''}">${d}${isToday?' <span style="font-size:0.5rem;">今天</span>':''}</div>${tagsHtml}</div>`;
+    const dayNames = ['日','一','二','三','四','五','六'];
+
+    // Build calendar as HTML table (guarantees full month display)
+    let calRows = '';
+    let dayCount = 1;
+    const totalCells = startDayOfWeek + daysInMonth;
+    const totalRows = Math.ceil(totalCells / 7);
+    for (let row = 0; row < totalRows; row++) {
+        let cells = '';
+        for (let col = 0; col < 7; col++) {
+            const cellIdx = row * 7 + col;
+            if (cellIdx < startDayOfWeek || dayCount > daysInMonth) {
+                cells += `<td class="sch-cell sch-empty"></td>`;
+            } else {
+                const d = dayCount;
+                const dateStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const isToday = dateStr === todayStr;
+                const isWeekend = col === 0 || col === 6;
+                const daySchedules = schedules.filter(s => s.date === dateStr);
+                let tagsHtml = '';
+                const maxShow = 3;
+                daySchedules.slice(0, maxShow).forEach(s => {
+                    const emp = employees.find(e => e.id === s.employee_id);
+                    const shiftName = s.shift || '休息';
+                    const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
+                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name.slice(0, 2)}</span>`;
+                });
+                if (daySchedules.length > maxShow) tagsHtml += `<span class="shift-tag" style="background:#f0f4eb;color:#819e73;border:1px solid #ddd;font-weight:600;">+${daySchedules.length - maxShow}</span>`;
+                const tdStyle = isToday ? 'background:#e8f5e0;border:2px solid #4caf50;font-weight:700;' : isWeekend ? 'background:#fdfdf7;' : '';
+                cells += `<td class="sch-cell" onclick="openScheduleDay('${dateStr}')" style="${tdStyle}"><div class="sch-day">${d}${isToday ? '<span style="font-size:0.5rem;color:#4caf50;">今天</span>' : ''}</div>${tagsHtml}</td>`;
+                dayCount++;
+            }
+        }
+        calRows += `<tr>${cells}</tr>`;
     }
+
     const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
     const monthSchedules = schedules.filter(s => (s.date || '').startsWith(monthStr));
     const scheduledCount = monthSchedules.length;
-    const coverageRate = employees.length>0&&daysInMonth>0 ? (scheduledCount/(employees.length*daysInMonth)*100).toFixed(1) : 0;
-    // Build per-employee summary with mini progress bars
+    const coverageRate = employees.length > 0 && daysInMonth > 0 ? (scheduledCount / (employees.length * daysInMonth) * 100).toFixed(1) : 0;
+
+    // Employee summary
     const empSummary = employees.map(e => {
         const eSchs = monthSchedules.filter(s => String(s.employee_id) === String(e.id));
         const counts = { '早班': 0, '中班': 0, '晚班': 0, '休息': 0 };
         eSchs.forEach(s => { if (counts[s.shift] !== undefined) counts[s.shift]++; });
-        return { emp: e, counts, total: eSchs.length, daysInMonth };
+        return { emp: e, counts };
     });
     let empTableHtml = empSummary.map(es => {
         const { emp, counts } = es;
         const scheduledDays = counts['早班'] + counts['中班'] + counts['晚班'] + counts['休息'];
-        const unscheduled = daysInMonth - scheduledDays;
-        const progressPct = daysInMonth>0 ? (scheduledDays/daysInMonth*100).toFixed(0) : 0;
-        const progressColor = progressPct>=100 ? '#2a7a3b' : progressPct>=70 ? '#b87c1a' : '#c23d2e';
+        const progressPct = daysInMonth > 0 ? (scheduledDays / daysInMonth * 100).toFixed(0) : 0;
+        const progressColor = progressPct >= 100 ? '#2a7a3b' : progressPct >= 70 ? '#b87c1a' : '#c23d2e';
         return `<tr>
-            <td><b>${emp.name}</b></td>
-            <td style="font-size:0.7rem;color:#819e73;">${emp.dept||'-'}</td>
-            <td style="font-size:0.7rem;">${emp.position||'-'}</td>
+            <td><b>${emp.name}</b></td><td style="font-size:0.7rem;color:#819e73;">${emp.dept || '-'}</td><td style="font-size:0.7rem;">${emp.position || '-'}</td>
             <td><span class="shift-tag shift-早班">早</span> <b>${counts['早班']}</b></td>
             <td><span class="shift-tag shift-中班">中</span> <b>${counts['中班']}</b></td>
             <td><span class="shift-tag shift-晚班">晚</span> <b>${counts['晚班']}</b></td>
@@ -5123,8 +5118,9 @@ pageRenderers['employee_schedule'] = function() {
             <td><button class="btn btn-outline" style="font-size:0.65rem;padding:2px 8px;" onclick="event.stopPropagation();viewEmpSchedule('${emp.id}','${emp.name}')">详情</button></td>
         </tr>`;
     }).join('');
+
     return `<div class="page active">
-        <div class="page-header"><div><h1>排班管理</h1><div class="breadcrumb">员工管理 / 排班日历</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()} | ${scheduleYear}年${scheduleMonth}月</div></div>
+        <div class="page-header"><div><h1>排班管理</h1><div class="breadcrumb">员工管理 / 排班日历</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()} | ${scheduleYear}年${scheduleMonth}月 · ${daysInMonth}天</div></div>
         <div class="page-body">
             <div class="schedule-calendar">
                 <div class="schedule-header">
@@ -5134,24 +5130,21 @@ pageRenderers['employee_schedule'] = function() {
                     <button class="btn btn-primary" onclick="openBatchSchedule()">📅 批量排班</button>
                     <button class="btn btn-outline" onclick="exportSchedule()">📥 导出</button>
                 </div>
-                <div class="schedule-grid" id="scheduleGrid">${gridHtml}</div>
+                <table class="schedule-table" id="scheduleGrid">
+                    <thead><tr>${dayNames.map((d, i) => `<th style="color:${i === 0 || i === 6 ? '#c23d2e' : '#426b39'};">${d}</th>`).join('')}</tr></thead>
+                    <tbody>${calRows}</tbody>
+                </table>
             </div>
-            <div style="margin-top:10px;display:flex;gap:14px;font-size:0.7rem;color:#819e73;align-items:center;">
-                <span><span class="shift-tag shift-早班">早</span> 早班</span>
-                <span><span class="shift-tag shift-中班">中</span> 中班</span>
-                <span><span class="shift-tag shift-晚班">晚</span> 晚班</span>
-                <span><span class="shift-tag shift-休息">休</span> 休息</span>
-                <span style="margin-left:auto;">📋 排班覆盖率: <b style="color:${coverageRate>=80?'#2a7a3b':coverageRate>=50?'#b87c1a':'#c23d2e'};">${coverageRate}%</b> | 点击日期格子进行排班</span>
+            <div style="margin-top:8px;display:flex;gap:14px;font-size:0.7rem;color:#819e73;align-items:center;">
+                <span><span class="shift-tag shift-早班">早</span> 早班</span><span><span class="shift-tag shift-中班">中</span> 中班</span><span><span class="shift-tag shift-晚班">晚</span> 晚班</span><span><span class="shift-tag shift-休息">休</span> 休息</span>
+                <span style="margin-left:auto;">📋 排班覆盖率: <b style="color:${coverageRate >= 80 ? '#2a7a3b' : coverageRate >= 50 ? '#b87c1a' : '#c23d2e'};">${coverageRate}%</b> | 点击日期格子排班</span>
             </div>
-            <div style="background:white;border-radius:20px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.04);margin-top:18px;">
+            <div style="background:white;border-radius:20px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.04);margin-top:14px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                    <h3 style="color:#1f3b2c;font-size:0.95rem;margin:0;">员工排班总览 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">${scheduleYear}年${scheduleMonth}月 · ${employees.length}人 · ${daysInMonth}天</span></h3>
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <span style="font-size:0.72rem;color:#819e73;">已排班: <b style="color:#2a7a3b;">${scheduledCount}</b> 条</span>
-                        <span style="font-size:0.65rem;color:#819e73;background:#f5faf0;padding:2px 8px;border-radius:10px;">可上下滚动查看</span>
-                    </div>
+                    <h3 style="color:#1f3b2c;font-size:0.95rem;margin:0;">员工排班总览 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">${employees.length}人 · ${daysInMonth}天</span></h3>
+                    <span style="font-size:0.72rem;color:#819e73;">已排班: <b style="color:#2a7a3b;">${scheduledCount}</b> 条</span>
                 </div>
-                <div style="max-height:360px;overflow-y:auto;border-radius:12px;border:1px solid #edf3e7;scrollbar-width:thin;scrollbar-color:#b8d9a4 #f5faf0;">
+                <div style="max-height:360px;overflow-y:auto;border-radius:12px;border:1px solid #edf3e7;">
                     <table class="data-table" style="min-width:100%;font-size:0.75rem;">
                         <thead style="position:sticky;top:0;z-index:2;background:#f5faf0;"><tr><th>员工</th><th>部门</th><th>岗位</th><th>早班</th><th>中班</th><th>晚班</th><th>休息</th><th>完成度</th><th>操作</th></tr></thead>
                         <tbody>${empTableHtml || '<tr><td colspan="9" style="text-align:center;color:#819e73;padding:24px;">暂无员工数据</td></tr>'}</tbody>
