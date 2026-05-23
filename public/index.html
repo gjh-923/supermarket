@@ -133,11 +133,13 @@
         .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: #3b9e5c; }
 
         /* ========== Dashboard 卡片 ========== */
-        .dashboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px; }
-        .stat-card { background: white; border-radius: 20px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-        .stat-card .stat-num { font-size: 2rem; font-weight: 700; color: #1f3b2c; }
-        .stat-card .stat-label { font-size: 0.75rem; color: #6d8f6a; margin-top: 4px; }
-        .stat-card .stat-icon { font-size: 1.8rem; }
+        .dashboard-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; margin-bottom: 20px; }
+        @media (max-width: 1200px) { .dashboard-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (max-width: 768px) { .dashboard-grid { grid-template-columns: repeat(2, 1fr); } }
+        .stat-card { background: white; border-radius: 16px; padding: 14px 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); text-align: center; }
+        .stat-card .stat-num { font-size: 1.5rem; font-weight: 700; color: #1f3b2c; }
+        .stat-card .stat-label { font-size: 0.7rem; color: #6d8f6a; margin-top: 2px; }
+        .stat-card .stat-icon { font-size: 1.3rem; }
 
         .toast-msg { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(20px); background: #1f3124; color: #f1f7e8; padding: 10px 22px; border-radius: 40px; font-size: 0.8rem; z-index: 1200; opacity: 0; transition: all 0.3s; pointer-events: none; white-space: nowrap; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .toast-msg.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -502,6 +504,9 @@ function _refreshCurrentView() {
 
 function _normalizeData(key, data) {
     if (!Array.isArray(data)) return data;
+    if (key === 'categories') {
+        return data.map(c => typeof c === 'string' ? c : (c && c.name ? c.name : String(c || '')));
+    }
     if (key === 'salesOrders') {
         return data.map(o => {
             const obj = {...o};
@@ -1320,13 +1325,13 @@ pageRenderers['dashboard'] = function() {
         <div class="page-header"><div><h1>系统首页</h1><div class="breadcrumb">系统首页 / 仪表盘</div></div><div style="color:#819e73;font-size:0.8rem">${getToday()} | ${ROLES[currentUser.role].name}工作台</div></div>
         <div class="page-body">
             <div class="dashboard-grid">
-                <div class="stat-card card-center fade-in" ${cardLink('product','点击查看商品信息')}><div class="stat-icon pulse-anim">📦</div><div class="stat-num count-up" data-target="${products.length}">0</div><div class="stat-label">商品总数${canAccess('product')?' →':''}</div></div>
-                <div class="stat-card card-center fade-in" ${cardLink('shelve','点击查看上架管理')}><div class="stat-icon">✅</div><div class="stat-num count-up" data-target="${onShelf}">0</div><div class="stat-label">在售商品${canAccess('shelve')?' →':''}</div></div>
-                <div class="stat-card card-center fade-in" ${cardLink('inventory','点击查看库存管理')}><div class="stat-icon">📋</div><div class="stat-num count-up" data-target="${totalStock}">0</div><div class="stat-label">库存总量${canAccess('inventory')?' →':''}</div></div>
-                <div class="stat-card card-center fade-in" ${cardLink('member','点击查看会员管理')}><div class="stat-icon">👤</div><div class="stat-num count-up" data-target="${members.length}">0</div><div class="stat-label">会员总数${canAccess('member')?' →':''}</div></div>
-                <div class="stat-card card-center fade-in" ${cardLink('employee','点击查看员工管理')}><div class="stat-icon">💼</div><div class="stat-num count-up" data-target="${employees.length}">0</div><div class="stat-label">员工人数${canAccess('employee')?' →':''}</div></div>
-                <div class="stat-card card-center fade-in" ${cardLink('finance_report','点击查看收支报表')}><div class="stat-icon">💰</div><div class="stat-num">¥${formatMoney(totalSales)}</div><div class="stat-label">总销售额${canAccess('finance_report')?' →':''}</div></div>
-                ${warningProducts.length > 0 ? `<div class="stat-card card-center fade-in" ${cardLink('inventory_alert','点击查看预警详情')} style="border:1px solid #ebc76a;"><div class="stat-icon pulse-anim">⚠️</div><div class="stat-num count-up" data-target="${warningProducts.length}">0</div><div class="stat-label" style="color:#b87c1a;">临期商品预警${canAccess('inventory_alert')?' →':''}</div></div>` : ''}
+                <div class="stat-card" ${cardLink('product','商品信息')}><div class="stat-icon">📦</div><div class="stat-num count-up" data-target="${products.length}">0</div><div class="stat-label">商品总数</div></div>
+                <div class="stat-card" ${cardLink('shelve','上架管理')}><div class="stat-icon">✅</div><div class="stat-num count-up" data-target="${onShelf}">0</div><div class="stat-label">在售商品</div></div>
+                <div class="stat-card" ${cardLink('inventory','库存管理')}><div class="stat-icon">📋</div><div class="stat-num count-up" data-target="${totalStock}">0</div><div class="stat-label">库存总量</div></div>
+                <div class="stat-card" ${cardLink('member','会员管理')}><div class="stat-icon">👤</div><div class="stat-num count-up" data-target="${members.length}">0</div><div class="stat-label">会员总数</div></div>
+                <div class="stat-card" ${cardLink('employee','员工管理')}><div class="stat-icon">💼</div><div class="stat-num count-up" data-target="${employees.length}">0</div><div class="stat-label">员工人数</div></div>
+                <div class="stat-card" ${cardLink('finance_report','收支报表')}><div class="stat-icon">💰</div><div class="stat-num">¥${formatMoney(totalSales)}</div><div class="stat-label">总销售额</div></div>
+                <div class="stat-card" ${cardLink('inventory_alert','预警详情')} style="border:1px solid ${warningProducts.length > 0 ? '#ebc76a' : '#e5e5e5'};"><div class="stat-icon">⚠️</div><div class="stat-num count-up" data-target="${warningProducts.length}" style="color:${warningProducts.length > 0 ? '#b87c1a' : '#819e73'};">0</div><div class="stat-label" style="color:${warningProducts.length > 0 ? '#b87c1a' : '#819e73'};">临期预警</div></div>
             </div>
             <div class="stats-chart-row">
                 <div class="chart-box fade-in"><h3 style="text-align:center;">📊 商品销量TOP5</h3>
@@ -1460,29 +1465,106 @@ function init_product() {
             if(diff<=7) return `<span class="badge badge-warn">临期(${diff}天)</span>`;
             return p.expiryDate;
         }}],
-        [{label:'查看',action:viewProduct},{label:'编辑',action:editProduct},{label:'删除',action:deleteProduct},{label:'入库',action:stockInFromProduct},{label:'调价',action:adjustPriceFromProduct}],
+        [{label:'查看',action:viewProduct},{label:'编辑',action:editProduct},{label:'删除',action:deleteProduct},{label:'调价',action:adjustPriceFromProduct}],
         (item,term)=>item.name.includes(term)||item.code.includes(term)||item.category.includes(term)
     );
     refreshCurrentTable();
 }
 function viewProduct(p) {
     const profitRate = p.retailPrice>0?((p.retailPrice-p.purchasePrice)/p.retailPrice*100).toFixed(1):0;
-    openModal('商品详情 - '+p.name,
-        `<div style="font-size:0.85rem;line-height:2;">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <p><strong>编号：</strong>${p.code}</p><p><strong>名称：</strong>${p.name}</p>
-                <p><strong>分类：</strong>${p.category}</p><p><strong>供应商：</strong>${p.supplier}</p>
-                <p><strong>进货价：</strong>¥${formatMoney(p.purchasePrice)}/${p.unit}</p><p><strong>零售价：</strong>¥${formatMoney(p.retailPrice)}/${p.unit}</p>
-                <p><strong>利润率：</strong>${profitRate}%</p><p><strong>库存：</strong>${p.stock} ${p.unit}</p>
-                <p><strong>状态：</strong>${p.status}</p><p><strong>销量：</strong>${p.sales} ${p.unit}</p>
-                <p><strong>生产日期：</strong>${p.produceDate||'-'}</p><p><strong>到期日期：</strong>${p.expiryDate||'-'}</p>
+    const imgHtml = p.image ? `<div style="text-align:center;margin-bottom:16px;"><img src="${p.image}" alt="${p.name}" style="max-width:260px;max-height:200px;border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,0.12);object-fit:contain;" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=padding:40px;text-align:center;color:#c1cfb7;font-size:3rem;background:#f5f9f2;border-radius:16px;>📷</div>';"></div>` : `<div style="text-align:center;margin-bottom:16px;padding:40px;background:#f5f9f2;border-radius:16px;font-size:3rem;color:#c1cfb7;">📷</div>`;
+    openModal('商品详情 — ' + p.name,
+        `<div style="font-size:0.85rem;">
+            ${imgHtml}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 24px;background:#f9fbf7;border-radius:14px;padding:18px;">
+                <div><span style="color:#819e73;">编号</span><br><strong>${p.code}</strong></div>
+                <div><span style="color:#819e73;">分类</span><br><strong>${p.category}</strong></div>
+                <div><span style="color:#819e73;">供应商</span><br><strong>${p.supplier||'-'}</strong></div>
+                <div><span style="color:#819e73;">单位</span><br><strong>${p.unit}</strong></div>
+                <div><span style="color:#819e73;">进货价</span><br><strong>¥${formatMoney(p.purchasePrice)}</strong></div>
+                <div><span style="color:#819e73;">零售价</span><br><strong style="color:#2c7840;font-size:1.1rem;">¥${formatMoney(p.retailPrice)}</strong></div>
+                <div><span style="color:#819e73;">利润率</span><br><strong style="color:${profitRate>30?'#2a7a3b':profitRate>10?'#b87c1a':'#c23d2e'}">${profitRate}%</strong></div>
+                <div><span style="color:#819e73;">库存</span><br><strong style="color:${p.stock<100?'#c23d2e':'#1f3b2c'}">${p.stock} ${p.unit}</strong></div>
+                <div><span style="color:#819e73;">销量</span><br><strong>${p.sales} ${p.unit}</strong></div>
+                <div><span style="color:#819e73;">状态</span><br><span class="badge ${p.status==='上架'?'badge-on':'badge-off'}">${p.status}</span></div>
+                <div><span style="color:#819e73;">生产日期</span><br><strong>${p.produceDate||'-'}</strong></div>
+                <div><span style="color:#819e73;">到期日期</span><br><strong>${p.expiryDate||'-'}</strong></div>
             </div>
-            <p style="margin-top:8px;"><strong>描述：</strong>${p.description||'无'}</p>
+            ${p.description ? `<div style="margin-top:14px;padding:14px;background:#fdf6e8;border-radius:12px;font-size:0.8rem;"><span style="color:#b87c1a;">📝 描述：</span>${p.description}</div>` : ''}
         </div>`,
         `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
 }
 function stockInFromProduct(p) { stockIn(p); }
 function adjustPriceFromProduct(p) { adjustPrice(p); }
+function stockIn(p) {
+    if (!p || !p.id) return;
+    openModal('商品入库 — ' + p.name, `
+        <div style="font-size:0.85rem;">
+            <p>当前库存: <strong>${p.stock} ${p.unit||'个'}</strong></p>
+            <div class="form-field"><label>入库数量</label><input type="number" id="frmStockQty" min="1" value="1" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #dde6d4;"></div>
+            <div class="form-field"><label>备注</label><input id="frmStockNote" placeholder="入库原因" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #dde6d4;"></div>
+        </div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button>
+         <button class="btn btn-primary" onclick="doStockIn(${p.id})">确认入库</button>`);
+}
+function doStockIn(pid) {
+    const qty = parseInt(document.getElementById('frmStockQty').value)||0;
+    if (qty <= 0) { alert('数量必须大于0'); return; }
+    const products = loadData('products');
+    const p = products.find(x => x.id === pid);
+    if (!p) return;
+    const before = p.stock;
+    p.stock += qty;
+    p.updated_at = new Date().toISOString();
+    saveData('products', products);
+    const records = loadData('inventoryRecords');
+    records.push({
+        id: makeId(), productId: pid, productName: p.name,
+        type: '入库', qty: qty, beforeStock: before, afterStock: p.stock,
+        operator: currentUser.name, note: document.getElementById('frmStockNote')?.value||'',
+        time: new Date().toLocaleString()
+    });
+    saveData('inventoryRecords', records);
+    closeModal();
+    if (typeof refreshCurrentTable === 'function') refreshCurrentTable();
+    addLog(`商品入库: ${p.name} +${qty}, 库存 ${before} → ${p.stock}`);
+    showToast(`${p.name} 入库成功，当前库存: ${p.stock}`);
+}
+function stockOut(p) {
+    if (!p || !p.id) return;
+    openModal('商品出库 — ' + p.name, `
+        <div style="font-size:0.85rem;">
+            <p>当前库存: <strong>${p.stock} ${p.unit||'个'}</strong></p>
+            <div class="form-field"><label>出库数量</label><input type="number" id="frmStockQty" min="1" max="${p.stock}" value="1" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #dde6d4;"></div>
+            <div class="form-field"><label>备注</label><input id="frmStockNote" placeholder="出库原因" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid #dde6d4;"></div>
+        </div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button>
+         <button class="btn btn-primary" onclick="doStockOut(${p.id})">确认出库</button>`);
+}
+function doStockOut(pid) {
+    const qty = parseInt(document.getElementById('frmStockQty').value)||0;
+    if (qty <= 0) { alert('数量必须大于0'); return; }
+    const products = loadData('products');
+    const p = products.find(x => x.id === pid);
+    if (!p) return;
+    if (qty > p.stock) { alert('库存不足'); return; }
+    const before = p.stock;
+    p.stock -= qty;
+    p.updated_at = new Date().toISOString();
+    saveData('products', products);
+    const records = loadData('inventoryRecords');
+    records.push({
+        id: makeId(), productId: pid, productName: p.name,
+        type: '出库', qty: -qty, beforeStock: before, afterStock: p.stock,
+        operator: currentUser.name, note: document.getElementById('frmStockNote')?.value||'',
+        time: new Date().toLocaleString()
+    });
+    saveData('inventoryRecords', records);
+    closeModal();
+    if (typeof refreshCurrentTable === 'function') refreshCurrentTable();
+    addLog(`商品出库: ${p.name} -${qty}, 库存 ${before} → ${p.stock}`);
+    showToast(`${p.name} 出库成功，当前库存: ${p.stock}`);
+}
 
 function getProductFormHTML(p) {
     p = p || {};
@@ -5561,7 +5643,7 @@ pageRenderers['supplier'] = function() {
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statSupActive" style="color:#2a7a3b;">-</div><div class="stat-label">合作中供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statSupALevel" style="color:#ffd700;">-</div><div class="stat-label">A级供应商</div></div>
                 <div class="stat-card"><div class="stat-icon">📦</div><div class="stat-num" id="statSupCats">-</div><div class="stat-label">供货品类数</div></div>
-                <div class="stat-card"><div class="stat-icon">⏸️</div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
+                <div class="stat-card"><div class="stat-icon">⏸</div><div class="stat-num" id="statSupPaused" style="color:#bc5a4a;">-</div><div class="stat-label">暂停合作</div></div>
             </div>
             <div class="action-bar">
                 <div class="btn-group">
