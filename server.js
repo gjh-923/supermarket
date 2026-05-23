@@ -801,16 +801,16 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
       }
     }
 
-    // Auto-upgrade member level
+    // Auto-upgrade member level based on points
     if (memberId) {
       const member = db.prepare('SELECT * FROM members WHERE id = ?').get(memberId);
       if (member) {
         const levels = db.prepare('SELECT * FROM member_levels ORDER BY min_spent DESC').all();
         for (const lv of levels) {
-          if (member.total_spent >= lv.min_spent && member.level !== lv.name) {
+          if (member.points >= lv.min_spent && member.level !== lv.name) {
             db.prepare('UPDATE members SET level = ? WHERE id = ?').run(lv.name, memberId);
             db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
-              .run(req.user.name, `会员 ${member.name} 升级为 ${lv.name}`);
+              .run(req.user.name, `会员 ${member.name} 升级为 ${lv.name}（积分: ${member.points}）`);
             break;
           }
         }
