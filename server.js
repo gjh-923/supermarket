@@ -84,7 +84,8 @@ function syncAffectedTablesToDataStore() {
     memberPhone: o.member_phone, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
     totalAmount: o.total_amount, discountAmount: o.discount_amount, finalAmount: o.final_amount,
     couponId: o.coupon_id, couponName: o.coupon_name, couponDiscount: o.coupon_discount,
-    payMethod: o.pay_method, operator: o.operator, orderDate: o.order_date
+    payMethod: o.pay_method, cashier: o.operator, time: o.order_date,
+    paymentMethod: o.pay_method, orderDate: o.order_date, operator: o.operator
   }))));
 
   // Members

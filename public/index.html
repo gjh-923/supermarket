@@ -466,9 +466,7 @@ function startAutoSync() {
         _isSyncing = true;
         try {
             await _apiSyncAll();
-            if (typeof currentPage !== 'undefined' && currentPage) {
-                renderPage(currentPage);
-            }
+            _refreshCurrentView();
         } catch(e) {}
         _isSyncing = false;
     }, 5000);
@@ -477,11 +475,36 @@ function stopAutoSync() {
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
 }
 
+// Lightweight view refresh after sync — updates data without rebuilding DOM
+function _refreshCurrentView() {
+    if (!currentPage) return;
+    // POS page: refresh product grid and cart only, preserve member input state
+    if (currentPage === 'sales') {
+        try { renderPosProducts(document.getElementById('posSearch')?.value||''); } catch(e) {}
+        try { renderCart(); } catch(e) {}
+        try { updatePosCouponInfo(); } catch(e) {}
+        return;
+    }
+    // Data table pages: refresh the table data
+    if (typeof refreshCurrentTable === 'function') {
+        try { refreshCurrentTable(); } catch(e) {}
+    }
+    // Chart/stats pages: re-run init to rebuild charts with fresh data
+    const initFn = window['init_' + currentPage];
+    if (typeof initFn === 'function') {
+        try { initFn(); } catch(e) {}
+    }
+}
+
 function _normalizeData(key, data) {
     if (!Array.isArray(data)) return data;
     if (key === 'salesOrders') {
         return data.map(o => {
             const obj = {...o};
+            // Field name aliases: backend uses different names than frontend
+            if (!obj.time && obj.orderDate) obj.time = obj.orderDate;
+            if (!obj.cashier && obj.operator) obj.cashier = obj.operator;
+            if (!obj.paymentMethod && obj.payMethod) obj.paymentMethod = obj.payMethod;
             // 解析 items JSON 字符串为数组
             if (typeof obj.items === 'string') {
                 try { obj.items = JSON.parse(obj.items); } catch(e) { obj.items = []; }
