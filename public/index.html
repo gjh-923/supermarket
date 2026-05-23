@@ -1792,7 +1792,7 @@ pageRenderers['inventory'] = function() {
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>商品名称</th><th>分类</th><th>当前库存</th><th>单位</th><th>进货价</th><th>零售价</th><th>库存价值</th><th>销量</th><th>周转状态</th><th>状态</th><th>到期日期</th></tr></thead>
+                    <thead><tr><th>商品名称</th><th>分类</th><th>当前库存</th><th>单位</th><th>进货价</th><th>零售价</th><th>库存价值</th><th>销量</th><th>周转状态</th><th>状态</th><th>到期日期</th><th style="width:100px;">操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -1831,7 +1831,8 @@ function init_inventory() {
                  if(diff<=7) return '<span class="badge" style="background:#fef0f0;color:#c23d2e;">'+p.expiryDate+' ('+diff+'天)</span>';
                  if(diff<=30) return '<span class="badge badge-warn">'+p.expiryDate+' ('+diff+'天)</span>';
                  return p.expiryDate;
-             }}],
+             }},
+             {key:'id',render:p=>`<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();stockIn(loadData('products').find(x=>x.id===${p.id}))" title="入库" style="padding:3px 8px;font-size:0.7rem;">+入库</button> <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();stockOut(loadData('products').find(x=>x.id===${p.id}))" title="出库" style="padding:3px 8px;font-size:0.7rem;">-出库</button>`}],
             [],
             (item,term)=>item.name.includes(term)||item.category.includes(term)||(item.code||'').includes(term)
         );
