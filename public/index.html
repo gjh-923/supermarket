@@ -424,17 +424,19 @@ async function _apiSyncAll() {
                 if (existing) {
                     try {
                         const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed)) {
-                            const serverMap = new Map(data.map(d => [d.id, d]));
-                            const localMap = new Map(parsed.map(d => [d.id, d]));
-                            // Server records take precedence for same ID
-                            for (const [id, serverRecord] of serverMap) {
-                                localMap.set(id, serverRecord);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            // Only ID-based merge if items have id fields
+                            if (typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
+                                const serverMap = new Map(data.map(d => [d.id, d]));
+                                const localMap = new Map(parsed.map(d => [d.id, d]));
+                                for (const [id, serverRecord] of serverMap) {
+                                    localMap.set(id, serverRecord);
+                                }
+                                const merged = Array.from(localMap.values());
+                                merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+                                localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
+                                continue;
                             }
-                            const merged = Array.from(localMap.values());
-                            merged.sort((a, b) => (b.id || 0) - (a.id || 0));
-                            localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
-                            continue;
                         }
                     } catch(e) {}
                 }
@@ -1009,8 +1011,13 @@ async function doLogin() {
     const username = document.getElementById('loginUser').value.trim();
     const password = document.getElementById('loginPass').value;
     const errEl = document.getElementById('loginError');
+    const btn = document.querySelector('.login-btn');
 
     if (!username || !password) { errEl.textContent = '请输入用户名和密码'; return; }
+
+    // 立即给用户反馈，防止重复点击
+    if (btn) { btn.disabled = true; btn.textContent = '登录中...'; }
+    errEl.textContent = '';
 
     // 先尝试 API 登录
     let apiLoginSuccess = false;
@@ -1032,11 +1039,13 @@ async function doLogin() {
         if (!user) {
             errEl.textContent = '用户名不存在';
             recordLoginLog(username, '未知用户', '失败', '用户名不存在');
+            if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
             return;
         }
         if (user.pass !== password) {
             errEl.textContent = '密码错误';
             recordLoginLog(username, user.name, '失败', '密码错误');
+            if (btn) { btn.disabled = false; btn.textContent = '登 录'; }
             return;
         }
         currentUser = { username, ...user };
