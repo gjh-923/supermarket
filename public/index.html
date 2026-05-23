@@ -428,6 +428,25 @@ async function _apiSyncAll() {
     } catch (e) { console.error('同步失败:', e.message); }
 }
 
+async function _seedServerIfEmpty() {
+    try {
+        const serverData = await _apiGet('/api/export/all');
+        for (const key of Object.keys(DEFAULT_DATA)) {
+            const serverVal = serverData[key];
+            if (Array.isArray(serverVal) && serverVal.length === 0) {
+                const localData = loadData(key);
+                if (Array.isArray(localData) && localData.length > 0) {
+                    await fetch(API_BASE + '/api/sync/' + key, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
+                        body: JSON.stringify({ data: localData })
+                    });
+                }
+            }
+        }
+    } catch(e) { console.error('服务器数据初始化失败:', e.message); }
+}
+
 function _normalizeData(key, data) {
     if (!Array.isArray(data)) return data;
     if (key === 'salesOrders') {
@@ -556,7 +575,7 @@ function startAutoSync() {
             }
         } catch(e) { /* 静默失败 */ }
         _isSyncing = false;
-    }, 20000);
+    }, 5000);
 }
 function stopAutoSync() {
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
@@ -965,6 +984,7 @@ async function doLogin() {
         apiLoginSuccess = true;
         console.log('API 登录成功，正在同步数据...');
         await _apiSyncAll();
+        await _seedServerIfEmpty();
         console.log('数据同步完成');
     } catch (e) {
         console.warn('API 登录失败，使用本地登录:', e.message);
@@ -996,7 +1016,7 @@ async function doLogin() {
     showToast('欢迎登录，' + currentUser.name + '！');
     // 后台检测 API 可用性
     _checkApi();
-    // 启动自动同步（每20秒从服务器拉取最新数据）
+    // 启动自动同步（每5秒从服务器拉取最新数据）
     if (apiLoginSuccess) startAutoSync();
 }
 function recordLoginLog(username, realName, status, message) {
@@ -1087,7 +1107,7 @@ function canAccess(page) {
     return rolePages.includes(page);
 }
 
-function navigateTo(page) {
+async function navigateTo(page) {
     if (!canAccess(page)) {
         showToast('权限不足：无法访问该模块', 2500);
         return;
@@ -1101,13 +1121,11 @@ function navigateTo(page) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
-    renderPage(page);
-    // 切换页面时同步最新数据
+    // 先同步最新数据，再渲染页面
     if (_apiToken && !_isSyncing) {
-        _apiSyncAll().then(() => {
-            if (currentPage === page) renderPage(page);
-        }).catch(() => {});
+        try { await _apiSyncAll(); } catch(e) {}
     }
+    renderPage(page);
 }
 function cardLink(page, title) {
     return canAccess(page) ? `onclick="navigateTo('${page}')" style="cursor:pointer;" title="${title}"` : 'style="opacity:0.5;cursor:not-allowed;" title="无权限访问"';
