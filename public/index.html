@@ -438,7 +438,7 @@ async function _apiSyncAll() {
                     } catch(e) {}
                 }
             }
-            // 对于有数据的表：ID-based 合并（服务器数据覆盖相同ID的本地记录，保留本地独有记录）
+            // 对于有数据的表：ID-based 合并（本地数据为主，服务器只补充本地没有的新记录）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
             if (Array.isArray(data) && data.length > 0) {
                 const existing = localStorage.getItem('sms_' + camelKey);
@@ -446,14 +446,12 @@ async function _apiSyncAll() {
                     try {
                         const parsed = JSON.parse(existing);
                         if (Array.isArray(parsed) && parsed.length > 0) {
-                            // Only ID-based merge if items have id fields
-                            // Local as authority: server only updates matching existing records.
-                            // Server-only records are NOT added (prevents deleted data from reappearing).
                             if (typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
                                 const serverMap = new Map(data.map(d => [d.id, d]));
                                 const localMap = new Map(parsed.map(d => [d.id, d]));
+                                // 本地为主：只添加服务器有而本地没有的新记录，已有记录保留本地版本
                                 for (const [id, serverRecord] of serverMap) {
-                                    if (localMap.has(id)) {
+                                    if (!localMap.has(id)) {
                                         localMap.set(id, serverRecord);
                                     }
                                 }
@@ -1058,6 +1056,49 @@ function recalcAllMemberStats() {
     if (changed) saveData('members', members);
     return changed;
 }
+function syncProductCategories() {
+    // 确保所有产品中的分类都存在于 categories 表中，保持数据一致性
+    var products = loadData('products');
+    var categories = loadData('categories');
+    if (!products.length) return;
+    var changed = false;
+    // 收集产品中使用的所有分类名称
+    var usedCats = new Set();
+    products.forEach(function(p) { if (p.category) usedCats.add(p.category); });
+    // 收集现有分类表中的名称
+    var existingNames = new Set(categories.map(function(c) { return typeof c === 'string' ? c : c.name; }));
+    // 将产品中有但分类表中没有的分类补充进去
+    usedCats.forEach(function(catName) {
+        if (!existingNames.has(catName)) {
+            var maxId = categories.reduce(function(m, c) { return Math.max(m, (typeof c === 'string' ? 0 : c.id) || 0); }, 0);
+            categories.push({
+                id: maxId + 1, name: catName, sort: 99,
+                status: '显示', description: '从产品自动同步',
+                createdAt: new Date().toISOString()
+            });
+            changed = true;
+        }
+    });
+    if (changed) saveData('categories', categories);
+    // 同时清理产品中的空分类（设为"未分类"）
+    var productsChanged = false;
+    products.forEach(function(p) {
+        if (!p.category) { p.category = '未分类'; productsChanged = true; }
+    });
+    // 确保"未分类"存在于分类表中
+    if (productsChanged || !existingNames.has('未分类')) {
+        if (!existingNames.has('未分类')) {
+            var maxId2 = categories.reduce(function(m, c) { return Math.max(m, (typeof c === 'string' ? 0 : c.id) || 0); }, 0);
+            categories.push({
+                id: maxId2 + 1, name: '未分类', sort: 0,
+                status: '显示', description: '自动生成',
+                createdAt: new Date().toISOString()
+            });
+        }
+        saveData('categories', categories);
+    }
+    if (productsChanged) saveData('products', products);
+}
 function migrateData() {
     // 迁移会员数据：补充缺失字段
     const members = loadData('members');
@@ -1078,6 +1119,8 @@ function migrateData() {
     deduplicateMembers();
     // 数据修复：从订单重建所有会员的 totalSpent、lastConsumeDate、cumulativePoints（独立加载保存，不会被覆盖）
     recalcAllMemberStats();
+    // 同步商品分类：将产品中的独有分类补充到 categories 表
+    syncProductCategories();
 
     // 迁移供应商数据：补充缺失字段
     let suppliers = loadData('suppliers');
@@ -1724,6 +1767,8 @@ function getProductFormHTML(p) {
     p = p || {};
     const unit = p.unit || '件';
     const cats = getCategoryNames();
+    // 确保产品当前分类出现在下拉框中（即使分类表尚未同步）
+    if (p.category && !cats.includes(p.category)) { cats.unshift(p.category); }
     const imgPreview = p.image ? `<div style="margin-top:8px;"><img src="${p.image}" style="max-width:200px;max-height:150px;border-radius:8px;border:1px solid #dde6d4;"></div>` : '';
     return `
     <input type="hidden" id="frmId" value="${p.id||''}">
