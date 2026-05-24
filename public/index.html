@@ -5131,18 +5131,46 @@ function saveEmployee() {
     showToast('员工信息已保存');
 }
 async function deleteEmployee(emp) {
-    if(!confirm(`确定删除员工"${emp.name}"吗？`)) return;
-    let employees = loadData('employees');
+    if(!confirm(`确定删除员工"${emp.name}"吗？此操作将同步清理该员工在所有子模块中的数据（排班、考勤、工资、岗位分配）。`)) return;
     const empId = parseInt(emp.id);
+    const empIdStr = String(empId);
+    let employees = loadData('employees');
     employees = employees.filter(x=>parseInt(x.id)!==empId);
-    // 先删除服务器端记录（清理 data_store），再保存本地（触发 sync POST）
+    // 级联清理：排班
+    let schedules = loadData('schedules');
+    const schedBefore = schedules.length;
+    schedules = schedules.filter(s=>String(s.employee_id)!==empIdStr);
+    if(schedules.length !== schedBefore) saveData('schedules', schedules);
+    // 级联清理：考勤
+    let attendances = loadData('attendances');
+    const attBefore = attendances.length;
+    attendances = attendances.filter(a=>String(a.employee_id)!==empIdStr);
+    if(attendances.length !== attBefore) saveData('attendances', attendances);
+    // 级联清理：工资
+    let salaries = loadData('salaries');
+    const salBefore = salaries.length;
+    salaries = salaries.filter(s=>String(s.employee_id)!==empIdStr);
+    if(salaries.length !== salBefore) saveData('salaries', salaries);
+    // 级联清理：岗位分配
+    let positions = loadData('employeePositions');
+    let posChanged = false;
+    positions.forEach(p => {
+        if(p.employeeIds) {
+            const ids = Array.isArray(p.employeeIds) ? p.employeeIds : (typeof p.employeeIds==='string' ? JSON.parse(p.employeeIds) : []);
+            const names = Array.isArray(p.employeeNames) ? p.employeeNames : (typeof p.employeeNames==='string' ? JSON.parse(p.employeeNames) : []);
+            const idx = ids.findIndex(id=>String(id)===empIdStr);
+            if(idx !== -1) { ids.splice(idx,1); names.splice(idx,1); p.employeeIds = ids; p.employeeNames = names; posChanged = true; }
+        }
+    });
+    if(posChanged) saveData('employeePositions', positions);
+    // 先删除服务器端记录，再保存本地
     if (_apiToken) {
         try { await _apiDel('/api/employees/' + empId); } catch(e) {}
     }
     saveData('employees', employees);
     refreshCurrentTable();
-    addLog(`删除员工: ${emp.name}`);
-    showToast('已删除');
+    addLog(`删除员工: ${emp.name}（已同步清理排班/考勤/工资/岗位关联数据）`);
+    showToast('已删除并同步清理所有子模块');
 }
 
 // -- 排班管理 --
