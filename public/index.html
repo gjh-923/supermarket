@@ -608,6 +608,30 @@ function _normalizeData(key, data) {
             return obj;
         });
     }
+    if (key === 'salaries') {
+        const deduped = [];
+        const seen = new Map();
+        data.forEach(s => {
+            const empId = s.employee_id || s.employeeId;
+            const month = s.salary_month || s.salaryMonth || '';
+            const uk = empId + '||' + month;
+            const existing = seen.get(uk);
+            if (!existing) {
+                seen.set(uk, s);
+                deduped.push(s);
+            } else {
+                // Keep the record with more data (higher total or later created_at)
+                const sTime = s.created_at || s.createdAt || '';
+                const eTime = existing.created_at || existing.createdAt || '';
+                if (sTime > eTime) {
+                    const idx = deduped.indexOf(existing);
+                    if (idx !== -1) deduped[idx] = s;
+                    seen.set(uk, s);
+                }
+            }
+        });
+        return deduped;
+    }
     if (key === 'memberLevels') {
         const seen = new Map();
         const deduped = [];
@@ -3346,18 +3370,10 @@ function checkout() {
     _apiCheckout(cartForApi, posMember?.id||null, useCoupon, selectedCoupon, payMethod).then(async result => {
         console.log('API结算成功:', result.orderNo);
         showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
-        // Download server data to get the new order and updated member/product data
-        let synced = false;
-        try { await _apiSyncAll(); synced = true; } catch(e) { console.warn('同步失败，2秒后重试:', e.message); }
-        if (!synced) {
-            // Retry once after a short delay
-            try { await new Promise(r => setTimeout(r, 2000)); await _apiSyncAll(); synced = true; } catch(e) { console.warn('重试同步仍失败:', e.message); }
-        }
-        if (!synced) {
-            // Server confirmed checkout success but sync failed — save locally to ensure data is visible
-            console.warn('同步持续失败，使用本地数据保存');
-            localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
-        }
+        // Save order locally using server's orderNo so reports see it immediately
+        _localSaveOrder(result.orderNo, result.finalAmount || finalAmount, payMethod, total);
+        // Also sync full data from server for multi-user consistency
+        try { await _apiSyncAll(); } catch(e) { console.warn('全量同步失败:', e.message); }
     }).catch(async e => {
         console.warn('API结算失败，使用本地结算:', e.message);
         localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
@@ -3384,6 +3400,68 @@ function getCashierName() {
         return cashierPos.employeeNames[0];
     }
     return currentUser.name;
+}
+
+// 本地保存服务端返回的订单（API结算成功后确保本地立即可见）
+function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
+    const products = loadData('products');
+    posCart.forEach(item => {
+        const p = products.find(x=>x.id===item.productId);
+        if(p) { p.stock -= item.qty; p.sales = (p.sales||0) + item.qty; }
+    });
+    saveData('products', products);
+    // 记录库存流水
+    const invRecords = loadData('inventoryRecords');
+    posCart.forEach(item => {
+        const p = products.find(x=>x.id===item.productId);
+        if(p) {
+            invRecords.push({id:makeId(), productId:item.productId, productName:item.name, type:'出库', qty:-item.qty, beforeStock:p.stock+item.qty, afterStock:p.stock, note:'POS销售 '+orderNo, time:new Date().toLocaleString(), operator:currentUser.name});
+        }
+    });
+    saveData('inventoryRecords', invRecords);
+    // 保存订单
+    const orders = loadData('salesOrders');
+    orders.push({
+        id: makeId(), orderNo: orderNo, items: JSON.parse(JSON.stringify(posCart)),
+        totalAmount: finalAmount, originalAmount: total,
+        memberId: posMember?.id||null, memberName: posMember?.name||'',
+        time: getNow(), cashier: getCashierName(),
+        paymentMethod: payMethod, status: '已完成'
+    });
+    saveData('salesOrders', orders);
+    // 记录财务流水
+    const ledger = loadData('financeLedger');
+    ledger.push({
+        id: makeId(), date: getToday(), type: '销售收入', category: '主营业务收入',
+        amount: finalAmount, account: payMethod || '现金', summary: 'POS销售 '+orderNo,
+        voucherNo: orderNo
+    });
+    saveData('financeLedger', ledger);
+    // 处理会员
+    if (posMember) {
+        const members = loadData('members');
+        const m = members.find(x=>x.id===posMember.id);
+        if (m && m.status !== '冻结') {
+            m.totalSpent = (m.totalSpent||0) + finalAmount;
+            m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(finalAmount);
+            const earnedPoints = Math.floor(finalAmount);
+            m.points = (m.points||0) + earnedPoints;
+            m.lastConsumeDate = getToday();
+            // 自动升级
+            const levels = loadData('memberLevels');
+            levels.sort((a,b)=>b.minSpent-a.minSpent);
+            const newLevel = levels.find(l=>(m.cumulativePoints||0) >= (l.minSpent||0));
+            if (newLevel && newLevel.name !== m.level) {
+                m.level = newLevel.name;
+                showToast(`会员升级！→ ${newLevel.name}`);
+            }
+            saveData('members', members);
+            const records = loadData('memberPointsRecords');
+            records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:'消费¥'+formatMoney(finalAmount)+'奖励'+earnedPoints+'积分'});
+            saveData('memberPointsRecords', records);
+            addLog('会员消费: '+m.name+' ¥'+formatMoney(finalAmount)+', +'+earnedPoints+'积分');
+        }
+    }
 }
 
 // 本地结算（API 不可用时的降级方案）
@@ -6710,8 +6788,14 @@ function autoCalcSalary() {
     let salaries = loadData('salaries');
     let attendances = loadData('attendances');
     const thisMonth = new Date().toISOString().slice(0,7);
-    salaries = salaries.filter(s=>s.salary_month!==thisMonth);
+    // Use stable IDs based on employee_id + month to prevent duplicates across recalculations
+    const existingIds = new Set(salaries.map(s => String(s.id)));
     employees.forEach(emp=>{
+        const stableId = parseInt(String(emp.id) + thisMonth.replace(/\D/g,''));
+        // Skip if already exists for this employee+month (idempotent)
+        if (salaries.some(s=>String(s.employee_id)===String(emp.id)&&s.salary_month===thisMonth)) return;
+        // Remove old entry with different ID for same employee+month
+        salaries = salaries.filter(s=>!(String(s.employee_id)===String(emp.id)&&s.salary_month===thisMonth));
         const monthAtt = attendances.filter(a=>String(a.employee_id)===String(emp.id)&&(a.att_date||'').startsWith(thisMonth));
         const workDays = monthAtt.filter(a=>a.status==='正常').length;
         const lateDays = monthAtt.filter(a=>a.status==='迟到').length;
@@ -6723,7 +6807,7 @@ function autoCalcSalary() {
         const deduction = lateDays * 50 + earlyDays * 50 + absentDays * 300;
         const total = Math.max(0, baseSalary + overtimePay - deduction);
         salaries.push({
-            id: makeId(), employee_id: emp.id, employee_name: emp.name,
+            id: stableId, employee_id: emp.id, employee_name: emp.name,
             salary_month: thisMonth, base_salary: baseSalary, overtime_pay: overtimePay,
             bonus: 0, deduction, work_days: workDays, overtime_days: overtimeDays,
             late_days: lateDays, early_days: earlyDays, absent_days: absentDays,
@@ -6762,8 +6846,9 @@ function saveManualSalary() {
     const total = base + ot + bonus - deduction;
     let salaries = loadData('salaries');
     salaries = salaries.filter(s=>!(String(s.employee_id)===String(employee_id)&&s.salary_month===month));
+    const stableId = parseInt(String(employee_id) + month.replace(/\D/g,''));
     salaries.push({
-        id: makeId(), employee_id, employee_name: emp?.name||'',
+        id: stableId, employee_id, employee_name: emp?.name||'',
         salary_month: month, base_salary: base, overtime_pay: ot,
         bonus, deduction, work_days: workDays, total,
         created_at: new Date().toISOString()
