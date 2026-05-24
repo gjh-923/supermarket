@@ -447,11 +447,15 @@ async function _apiSyncAll() {
                         const parsed = JSON.parse(existing);
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             // Only ID-based merge if items have id fields
+                            // Local as authority: server only updates matching existing records.
+                            // Server-only records are NOT added (prevents deleted data from reappearing).
                             if (typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
                                 const serverMap = new Map(data.map(d => [d.id, d]));
                                 const localMap = new Map(parsed.map(d => [d.id, d]));
                                 for (const [id, serverRecord] of serverMap) {
-                                    localMap.set(id, serverRecord);
+                                    if (localMap.has(id)) {
+                                        localMap.set(id, serverRecord);
+                                    }
                                 }
                                 const merged = Array.from(localMap.values());
                                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -5243,7 +5247,7 @@ pageRenderers['employee_schedule'] = function() {
             <td><span class="shift-tag shift-晚班">晚</span> <b>${counts['晚班']}</b></td>
             <td><span class="shift-tag shift-休息">休</span> <b>${counts['休息']}</b></td>
             <td style="min-width:100px;"><div style="display:flex;align-items:center;gap:4px;"><div style="flex:1;height:6px;background:#f0f4eb;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${progressPct}%;background:${progressColor};border-radius:3px;"></div></div><span style="font-size:0.7rem;color:${progressColor};font-weight:600;">${progressPct}%</span></div></td>
-            <td><button class="btn btn-outline" style="font-size:0.65rem;padding:2px 8px;" onclick="event.stopPropagation();viewEmpSchedule('${emp.id}','${emp.name}')">详情</button></td>
+            <td><button class="btn btn-outline sch-detail-btn" style="font-size:0.7rem;padding:4px 12px;cursor:pointer;" data-eid="${emp.id}">详情</button></td>
         </tr>`;
     }).join('');
 
@@ -5257,6 +5261,7 @@ pageRenderers['employee_schedule'] = function() {
                     <button class="btn btn-outline" onclick="changeScheduleMonth(1)" style="font-size:0.8rem;">下月 ▶</button>
                     <button class="btn btn-primary" onclick="openBatchSchedule()">📅 批量排班</button>
                     <button class="btn btn-outline" onclick="exportSchedule()">📥 导出</button>
+                    <button class="btn btn-outline" style="color:#c23d2e;border-color:#e8c4c4;" onclick="clearAllSchedules()">🗑 清除本月全部排班</button>
                 </div>
                 <table class="schedule-table" id="scheduleGrid">
                     <thead><tr>${dayNames.map((d, i) => `<th style="color:${i === 0 || i === 6 ? '#c23d2e' : '#426b39'};">${d}</th>`).join('')}</tr></thead>
@@ -5283,8 +5288,19 @@ pageRenderers['employee_schedule'] = function() {
         </div>
     </div>`;
 };
+function _onSchDetailClick(e) {
+    const btn = e.target.closest('.sch-detail-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    const empId = btn.dataset.eid;
+    const employees = loadData('employees');
+    const emp = employees.find(em => String(em.id) === String(empId));
+    viewEmpSchedule(empId, emp ? emp.name : '未知');
+}
 function init_employee_schedule() {
     refreshCurrentTable = () => { try { renderPage('employee_schedule'); } catch(e) {} };
+    document.removeEventListener('click', _onSchDetailClick);
+    document.addEventListener('click', _onSchDetailClick);
 }
 function changeScheduleMonth(delta) {
     scheduleMonth += delta;
@@ -5365,9 +5381,24 @@ function clearDaySchedule(dateStr) {
     addLog(`清除排班: ${dateStr}`);
     showToast(`${dateStr} 排班已全部清除`);
 }
+function clearAllSchedules() {
+    const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
+    if(!confirm(`⚠️ 确定清除 ${scheduleYear}年${scheduleMonth}月 全部排班记录吗？\n\n此操作将删除该月所有 ${loadData('schedules').filter(s=>(s.date||'').startsWith(monthStr)).length} 条排班记录，不可恢复！`)) return;
+    let schedules = loadData('schedules');
+    schedules = schedules.filter(s => !(s.date || '').startsWith(monthStr));
+    saveData('schedules', schedules);
+    navigateTo('employee_schedule');
+    addLog(`清除全部排班: ${monthStr}`);
+    showToast(`${monthStr} 全部排班已清除`);
+}
 function openBatchSchedule() {
     const lastDay = new Date(scheduleYear, scheduleMonth, 0);
     const daysInMonth = lastDay.getDate();
+    const employees = loadData('employees');
+    const empChecks = employees.map(e => `
+        <label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid #dde6d4;border-radius:10px;font-size:0.72rem;cursor:pointer;">
+            <input type="checkbox" value="${e.id}" class="batchEmpCb" checked> ${e.name}
+        </label>`).join('');
     openModal('批量排班', `
         <p style="font-size:0.78rem;color:#819e73;margin-bottom:12px;">为 ${scheduleYear}年${scheduleMonth}月 批量设置排班</p>
         <div class="form-row">
@@ -5377,6 +5408,10 @@ function openBatchSchedule() {
         <div class="form-row">
             <div class="form-field"><label>班次类型</label><select id="batchShift"><option>早班</option><option>中班</option><option>晚班</option><option>休息</option></select></div>
             <div class="form-field"><label>重复模式</label><select id="batchRepeat"><option value="all">每天</option><option value="weekday">仅工作日(周一至周五)</option><option value="weekend">仅周末</option></select></div>
+        </div>
+        <div style="margin-top:10px;">
+            <label style="font-size:0.72rem;color:#819e73;display:block;margin-bottom:6px;">选择员工 <a href="javascript:void(0)" onclick="document.querySelectorAll('.batchEmpCb').forEach(c=>c.checked=true)" style="color:#426b39;font-size:0.68rem;">全选</a> · <a href="javascript:void(0)" onclick="document.querySelectorAll('.batchEmpCb').forEach(c=>c.checked=false)" style="color:#c23d2e;font-size:0.68rem;">取消全选</a></label>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow-y:auto;">${empChecks}</div>
         </div>`,
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="applyBatchSchedule()">应用排班</button>`);
 }
@@ -5485,7 +5520,10 @@ function applyBatchSchedule() {
     const toDay = parseInt(document.getElementById('batchToDay').value);
     const shift = document.getElementById('batchShift').value;
     const repeat = document.getElementById('batchRepeat').value;
-    const employees = loadData('employees');
+    const checkedIds = new Set();
+    document.querySelectorAll('.batchEmpCb:checked').forEach(cb => checkedIds.add(cb.value));
+    if (checkedIds.size === 0) { alert('请至少选择一名员工'); return; }
+    const employees = loadData('employees').filter(e => checkedIds.has(String(e.id)));
     if(fromDay > toDay) { alert('起始日期不能大于结束日期'); return; }
     let schedules = loadData('schedules');
     const allShifts = [];
