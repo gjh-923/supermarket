@@ -163,6 +163,13 @@ function syncAffectedTablesToDataStore() {
     operator: r.operator, note: r.note, time: r.time, createdAt: r.created_at
   }))));
 
+  // MemberLevels
+  const memberLevels = db.prepare('SELECT * FROM member_levels ORDER BY min_spent DESC').all();
+  upsert.run('memberLevels', JSON.stringify(memberLevels.map(l => ({
+    id: l.id, name: l.name, minSpent: l.min_spent, discount: l.discount,
+    pointsRate: l.points_rate, cardColor: l.card_color, benefits: l.benefits
+  }))));
+
   // MemberPointsRecords
   const pointsRecords = db.prepare('SELECT * FROM member_points_records ORDER BY id DESC').all();
   upsert.run('memberPointsRecords', JSON.stringify(pointsRecords.map(r => ({
@@ -1900,6 +1907,26 @@ function seedDefaultData() {
 }
 
 seedDefaultData();
+
+// Migrate: rename old 青铜会员 to 普通会员 in SQL tables and data_store
+try {
+  db.prepare(`UPDATE member_levels SET name = '普通会员' WHERE name = '青铜会员'`).run();
+  db.prepare(`UPDATE members SET level = '普通会员' WHERE level = '青铜会员'`).run();
+  const row = db.prepare(`SELECT data FROM data_store WHERE key = 'memberLevels'`).get();
+  if (row && row.data) {
+    const levels = JSON.parse(row.data);
+    let changed = false;
+    levels.forEach(l => { if (l.name === '青铜会员') { l.name = '普通会员'; changed = true; } });
+    if (changed) db.prepare(`UPDATE data_store SET data = ? WHERE key = 'memberLevels'`).run(JSON.stringify(levels));
+  }
+  const memRow = db.prepare(`SELECT data FROM data_store WHERE key = 'members'`).get();
+  if (memRow && memRow.data) {
+    const members = JSON.parse(memRow.data);
+    let changed = false;
+    members.forEach(m => { if (m.level === '青铜会员') { m.level = '普通会员'; changed = true; } });
+    if (changed) db.prepare(`UPDATE data_store SET data = ? WHERE key = 'members'`).run(JSON.stringify(members));
+  }
+} catch(e) { /* migration may fail if tables don't exist yet */ }
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`超市管理系统后端已启动: http://localhost:${PORT}`);
