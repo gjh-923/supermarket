@@ -672,11 +672,11 @@ const ROLES = {
     system_admin: { name: '系统管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','sales','sales_order','sales_return','sales_stats','sales_ranking','member','member_level','member_points','member_exchange','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax','employee','employee_schedule','employee_attendance','employee_salary','supplier','supplier_contract','supplier_evaluation','system_users','system_roles','system_dept','system_post','system_menu','system_logs','system_login_logs','system_backup','system_monitor','system_settings','system_params','system_dict','system_notice','system_maintenance','employee_position'] },
     ops: { name: '运维人员', pages: ['dashboard','system_log_mgmt','system_backup_mgmt','system_maintenance','system_logs','system_login_logs','system_backup','system_monitor'] },
     hr: { name: '人事管理员', pages: ['dashboard','employee','employee_position','employee_schedule','employee_attendance','employee_salary'] },
-    product_admin: { name: '商品管理员', pages: ['dashboard','product','category','inventory','price','promotion'] },
+    product_admin: { name: '商品管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones'] },
     member_admin: { name: '会员管理员', pages: ['dashboard','member','member_level','member_points','member_exchange'] },
     cashier: { name: '收银员', pages: ['dashboard','sales','sales_order','sales_stats','sales_ranking','member','member_points'] },
     purchaser: { name: '采购员', pages: ['dashboard','purchase_in','supplier','supplier_contract','supplier_evaluation','inventory'] },
-    warehouse: { name: '仓管员', pages: ['dashboard','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones'] },
+    warehouse: { name: '仓管员', pages: ['dashboard','purchase_in'] },
     inventory: { name: '库存管理员', pages: ['dashboard','inventory','warehouse','inventory_check','inventory_alert','shelve','inventory_writeoff','warehouse_zones','purchase_in'] },
     finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax'] },
 };
@@ -844,7 +844,7 @@ const DEFAULT_DATA = {
         { id:1, name:'收银员', permissions:'sales,sales_order,member,member_points' },
         { id:2, name:'理货员', permissions:'inventory,shelve' },
         { id:3, name:'采购员', permissions:'purchase_in,supplier,supplier_contract,supplier_evaluation' },
-        { id:4, name:'仓管员', permissions:'warehouse,inventory_writeoff,inventory_check,inventory_alert' },
+        { id:4, name:'仓管员', permissions:'purchase_in' },
         { id:5, name:'财务', permissions:'finance,finance_report,finance_profit,finance_balance,finance_cashflow,finance_cost,finance_budget,finance_tax,finance_ledger' },
         { id:6, name:'店长', permissions:'all' }
     ],
@@ -3807,7 +3807,7 @@ pageRenderers['purchase_in'] = function() {
         ['采购单号','供应商','商品','数量','单价','金额','日期','采购员'],
         orders,
         [{label:'详情',action:viewPurchase}],
-        `${canEdit()&&currentUser.role!=='warehouse'?'<button class="btn btn-primary" onclick="addPurchase()">新增采购单</button>':''}`,
+        `${canEdit()?'<button class="btn btn-primary" onclick="addPurchase()">新增采购单</button>':''}`,
         '搜索采购单号或供应商'
     );
 };
