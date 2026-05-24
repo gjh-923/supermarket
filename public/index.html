@@ -3748,16 +3748,17 @@ function init_sales_stats() {
         });
     });
     var monthProfit = monthSales - monthCost;
-    if (monthCount === 0 && orders.length > 0 && _lastSalesStats) {
+    if (monthCount > 0) {
+        _lastSalesStats = { todaySales, monthSales, monthCount, avgOrder, monthProfit, monthCost, todayOrders, monthOrders };
+    } else if (_lastSalesStats) {
         todaySales = _lastSalesStats.todaySales;
         monthSales = _lastSalesStats.monthSales;
         monthCount = _lastSalesStats.monthCount;
         avgOrder = _lastSalesStats.avgOrder;
         monthProfit = _lastSalesStats.monthProfit;
-        todayOrders = _lastSalesStats.todayOrders || todayOrders;
-        monthOrders = _lastSalesStats.monthOrders || monthOrders;
-    } else if (monthCount > 0) {
-        _lastSalesStats = { todaySales, monthSales, monthCount, avgOrder, monthProfit, todayOrders, monthOrders };
+        monthCost = _lastSalesStats.monthCost;
+        todayOrders = _lastSalesStats.todayOrders;
+        monthOrders = _lastSalesStats.monthOrders;
     }
     document.getElementById('salesStatsCards').innerHTML = `
         <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num count-up" data-target="${Math.round(todaySales)}">0</div><div class="stat-label">今日销售额</div></div>
