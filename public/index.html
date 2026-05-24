@@ -3176,7 +3176,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
                 m.cumulativePoints = (m.cumulativePoints||0) + earnedPoints;
                 const levels = loadData('memberLevels');
                 levels.sort((a,b)=>b.minSpent-a.minSpent);
-                const newLevel = levels.find(l=>m.totalSpent >= l.minSpent);
+                const newLevel = levels.find(l=>(m.cumulativePoints||0) >= (l.minSpent||0));
                 const oldLevel = m.level;
                 if (newLevel && newLevel.name !== oldLevel) {
                     m.level = newLevel.name;
@@ -3528,6 +3528,7 @@ pageRenderers['member'] = function() {
                 <div class="btn-group">
                     ${currentUser.role!=="cashier"?`<button class="btn btn-primary" onclick="addMember()">新增会员</button>`:""}
 ${currentUser.role!=="cashier"?`                    <button class="btn btn-outline" onclick="exportMembers()">导出会员</button>
+                    <button class="btn btn-outline" onclick="importMembersPrompt()">导入会员</button>
                     <button class="btn btn-outline" onclick="navigateTo('member_level')">等级管理</button>
                     <button class="btn btn-outline" onclick="navigateTo('member_points')">积分管理</button>
 `:""}
@@ -3541,7 +3542,7 @@ ${currentUser.role!=="cashier"?`                    <button class="btn btn-outli
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>注册日期</th><th>累计消费</th><th>累计积分</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
+                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -3583,7 +3584,6 @@ function init_member() {
              }},
              {key:'joinDate'},
              {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)},
-             {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
              {key:'status',render:m=>`<span class="badge ${(m.status||'正常')==='正常'?'badge-on':'badge-off'}">${m.status||'正常'}</span>`},
              {key:'lastConsumeDate',render:m=>m.lastConsumeDate||'-'}],
             (currentUser.role==='cashier'?[{label:'详情',action:viewMember},{label:'消费记录',action:viewMemberConsumption}]:[{label:'详情',action:viewMember},{label:'编辑',action:editMember},
@@ -3596,29 +3596,30 @@ function init_member() {
     refreshCurrentTable();
 }
 function viewMember(m) {
+    const freshMember = loadData('members').find(x=>x.id===m.id) || m;
     const levels = loadData('memberLevels');
-    const lvl = levels.find(l=>l.name===m.level);
-    const records = loadData('memberPointsRecords').filter(r=>r.memberId===m.id).slice(-5).reverse();
-    const orders = loadData('salesOrders').filter(o=>o.memberId===m.id).slice(-5).reverse();
-    openModal('会员详情 - '+m.name, `
+    const lvl = levels.find(l=>l.name===freshMember.level);
+    const records = loadData('memberPointsRecords').filter(r=>r.memberId===freshMember.id).slice(-5).reverse();
+    const orders = loadData('salesOrders').filter(o=>o.memberId===freshMember.id).slice(-5).reverse();
+    openModal('会员详情 - '+freshMember.name, `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:0.85rem;">
-            <div><strong>会员卡号:</strong> ${m.cardNo||'-'}</div><div><strong>姓名:</strong> ${m.name}</div>
-            <div><strong>性别:</strong> ${m.gender||'-'}</div><div><strong>生日:</strong> ${m.birthday||'-'}</div>
-            <div><strong>手机号:</strong> ${m.phone}</div><div><strong>邮箱:</strong> ${m.email||'-'}</div>
-            <div><strong>地址:</strong> ${m.address||'-'}</div><div><strong>等级:</strong> <span class="badge" style="background:${lvl?lvl.cardColor:'#9e9e9e'}22;color:${lvl?lvl.cardColor:'#9e9e9e'};">${m.level}</span></div>
-            <div><strong>现有积分:</strong> ${m.points||0}</div><div><strong>累积积分:</strong> ${m.cumulativePoints||0}</div>
-            <div><strong>累计消费:</strong> ¥${formatMoney(m.totalSpent)}</div><div><strong>折扣:</strong> ${lvl?lvl.discount:'100'}折</div>
-            <div><strong>注册日期:</strong> ${m.joinDate}</div><div><strong>注册来源:</strong> ${m.source||'-'}</div>
-            <div><strong>状态:</strong> <span class="badge ${m.status==='正常'?'badge-on':'badge-off'}">${m.status}</span></div><div><strong>最后消费:</strong> ${m.lastConsumeDate||'-'}</div>
+            <div><strong>会员卡号:</strong> ${freshMember.cardNo||'-'}</div><div><strong>姓名:</strong> ${freshMember.name}</div>
+            <div><strong>性别:</strong> ${freshMember.gender||'-'}</div><div><strong>生日:</strong> ${freshMember.birthday||'-'}</div>
+            <div><strong>手机号:</strong> ${freshMember.phone}</div><div><strong>邮箱:</strong> ${freshMember.email||'-'}</div>
+            <div><strong>地址:</strong> ${freshMember.address||'-'}</div><div><strong>等级:</strong> <span class="badge" style="background:${lvl?lvl.cardColor:'#9e9e9e'}22;color:${lvl?lvl.cardColor:'#9e9e9e'};">${freshMember.level}</span></div>
+            <div><strong>现有积分:</strong> ${freshMember.points||0}</div><div><strong>累积积分:</strong> ${freshMember.cumulativePoints||0}</div>
+            <div><strong>累计消费:</strong> ¥${formatMoney(freshMember.totalSpent)}</div><div><strong>折扣:</strong> ${lvl?lvl.discount:'100'}折</div>
+            <div><strong>注册日期:</strong> ${freshMember.joinDate}</div><div><strong>注册来源:</strong> ${freshMember.source||'-'}</div>
+            <div><strong>状态:</strong> <span class="badge ${freshMember.status==='正常'?'badge-on':'badge-off'}">${freshMember.status}</span></div><div><strong>最后消费:</strong> ${freshMember.lastConsumeDate||'-'}</div>
         </div>
-        <div style="margin-top:16px;"><h4 style="color:#1f3b2c;margin-bottom:8px;">最近积分记录 (${loadData('memberPointsRecords').filter(r=>r.memberId===m.id).length}条)</h4>
+        <div style="margin-top:16px;"><h4 style="color:#1f3b2c;margin-bottom:8px;">最近积分记录 (${loadData('memberPointsRecords').filter(r=>r.memberId===freshMember.id).length}条)</h4>
         ${records.length>0 ? `<table class="data-table" style="min-width:400px;"><thead><tr><th>时间</th><th>类型</th><th>积分变动</th><th>余额</th><th>备注</th></tr></thead><tbody>${records.map(r=>`<tr><td>${r.time}</td><td>${r.type}</td><td style="color:${r.points>=0?'#2a7a3b':'#c23d2e'};">${r.points>=0?'+':''}${r.points}</td><td>${r.balance}</td><td>${r.note}</td></tr>`).join('')}</tbody></table>` : '<p style="color:#819e73;">暂无积分记录</p>'}
         </div>
-        <div style="margin-top:16px;"><h4 style="color:#1f3b2c;margin-bottom:8px;">最近消费记录 (${loadData('salesOrders').filter(o=>o.memberId===m.id).length}笔)</h4>
+        <div style="margin-top:16px;"><h4 style="color:#1f3b2c;margin-bottom:8px;">最近消费记录 (${loadData('salesOrders').filter(o=>o.memberId===freshMember.id).length}笔)</h4>
         ${orders.length>0 ? `<table class="data-table" style="min-width:400px;"><thead><tr><th>订单号</th><th>时间</th><th>商品</th><th>折扣</th><th>金额</th></tr></thead><tbody>${orders.map(o=>`<tr><td>${o.orderNo}</td><td>${o.time}</td><td>${o.items.map(i=>i.name+'x'+i.qty).join(', ')}</td><td>${(o.discountRate||100)<100?o.discountRate+'折':'-'}</td><td style="font-weight:600;color:#2a7a3b;">¥${formatMoney(o.totalAmount)}</td></tr>`).join('')}</tbody></table>` : '<p style="color:#819e73;">暂无消费记录</p>'}
         </div>`,
         `<button class="btn btn-outline" onclick="closeModal()">关闭</button>
-	         <button class="btn btn-primary" onclick="closeModal();editMember(loadData('members').find(m=>m.id===${m.id}))">编辑会员</button>`);
+	         <button class="btn btn-primary" onclick="closeModal();editMember(loadData('members').find(m=>m.id===${freshMember.id}))">编辑会员</button>`);
 }
 function viewMemberConsumption(m) {
     try {
@@ -3821,6 +3822,77 @@ function exportMembers() {
     addLog('导出会员数据');
     showToast('会员数据已导出');
 }
+function importMembersPrompt() {
+    openModal('导入会员', `
+        <p style="margin-bottom:12px;color:#819e73;">请选择CSV文件，格式要求：</p>
+        <p style="font-size:0.75rem;color:#6d8f6a;margin-bottom:16px;">列顺序：卡号,姓名,性别,手机号,邮箱,地址,等级,现有积分,累积积分,注册日期,累计消费,状态,最后消费,来源<br>第一行为列头（自动跳过），手机号列为必填</p>
+        <input type="file" id="frmImportFile" accept=".csv" style="width:100%;padding:8px;border:2px dashed #dde6d4;border-radius:8px;">
+        <div id="importPreview" style="margin-top:12px;max-height:200px;overflow:auto;font-size:0.75rem;"></div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doImportMembers()">开始导入</button>`);
+}
+function doImportMembers() {
+    var fileInput = document.getElementById('frmImportFile');
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) { alert('请选择CSV文件'); return; }
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var text = e.target.result;
+        var lines = text.split(/\r?\n/).filter(function(l){return l.trim();});
+        if (lines.length < 2) { alert('CSV文件为空或仅有表头'); return; }
+        var members = loadData('members');
+        var levels = loadData('memberLevels');
+        var defaultLevel = levels.length ? levels[levels.length-1].name : '普通会员';
+        var imported = 0, skipped = 0, errors = [];
+        for (var i = 1; i < lines.length; i++) {
+            var cols = parseCSVLine(lines[i]);
+            if (cols.length < 4) { skipped++; continue; }
+            var cardNo = (cols[0]||'').trim();
+            var name = (cols[1]||'').trim();
+            var gender = (cols[2]||'').trim() || '男';
+            var phone = (cols[3]||'').trim();
+            if (!phone) { skipped++; errors.push('第'+(i+1)+'行: 缺少手机号'); continue; }
+            if (!name) { skipped++; errors.push('第'+(i+1)+'行: 缺少姓名'); continue; }
+            // 唯一性校验: 卡号
+            if (cardNo && members.some(function(m){return m.cardNo === cardNo;})) {
+                skipped++; errors.push('第'+(i+1)+'行: 卡号"'+cardNo+'"已存在'); continue;
+            }
+            // 唯一性校验: 手机号
+            if (members.some(function(m){return m.phone === phone;})) {
+                skipped++; errors.push('第'+(i+1)+'行: 手机号"'+phone+'"已存在'); continue;
+            }
+            var email = (cols[4]||'').trim();
+            var address = (cols[5]||'').trim();
+            var level = (cols[6]||'').trim() || defaultLevel;
+            var points = parseInt(cols[7])||0;
+            var cumulativePoints = parseInt(cols[8])||0;
+            var joinDate = (cols[9]||'').trim() || getToday();
+            var totalSpent = parseFloat(cols[10])||0;
+            var status = (cols[11]||'').trim() || '正常';
+            if (status !== '正常' && status !== '冻结') status = '正常';
+            var lastConsumeDate = (cols[12]||'').trim();
+            var source = (cols[13]||'').trim() || '批量导入';
+            members.push({
+                id: members.length ? Math.max.apply(null, members.map(function(m){return m.id;}))+1 : 1,
+                cardNo: cardNo, name: name, gender: gender, phone: phone,
+                email: email, address: address, level: level,
+                points: points, cumulativePoints: cumulativePoints,
+                joinDate: joinDate, totalSpent: totalSpent,
+                status: status, lastConsumeDate: lastConsumeDate, source: source
+            });
+            imported++;
+        }
+        saveData('members', members);
+        closeModal();
+        refreshCurrentTable();
+        var msg = '导入完成！成功: '+imported+' 条';
+        if (skipped > 0) msg += ', 跳过: '+skipped+' 条';
+        if (errors.length > 0 && errors.length <= 5) msg += '\n'+errors.join('\n');
+        else if (errors.length > 5) msg += '\n'+errors.slice(0,5).join('\n')+'\n...(共'+errors.length+'条错误)';
+        alert(msg);
+        addLog('导入会员: 成功'+imported+'条, 跳过'+skipped+'条');
+    };
+    reader.readAsText(file, 'UTF-8');
+}
 
 // -- 会员等级 --
 pageRenderers['member_level'] = function() {
@@ -3957,10 +4029,10 @@ function autoMatchMemberLevel(member) {
     const levels = loadData('memberLevels');
     if (!levels.length) return;
     levels.sort((a,b)=>b.minSpent-a.minSpent);
-    const spent = member.totalSpent || 0;
-    let matched = levels[levels.length-1]; // default to lowest
+    const cumPts = member.cumulativePoints || 0;
+    let matched = levels[levels.length-1];
     for (const lv of levels) {
-        if (spent >= (lv.minSpent || 0)) { matched = lv; break; }
+        if (cumPts >= (lv.minSpent || 0)) { matched = lv; break; }
     }
     if (member.level !== matched.name) {
         member.level = matched.name;
@@ -3977,24 +4049,17 @@ function autoMatchAllMemberLevels() {
 
 // -- 积分管理 --
 pageRenderers['member_points'] = function() {
-    const members = loadData('members');
-    const records = loadData('memberPointsRecords');
-    const totalPoints = members.reduce((s,m)=>s+(m.points||0),0);
-    const totalCumPoints = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
-    const totalSpentAll = members.reduce((s,m)=>s+(m.totalSpent||0),0);
-    const totalExchanged = records.filter(r=>r.type==='积分兑换').reduce((s,r)=>s+Math.abs(r.points),0);
-    const totalEarned = records.filter(r=>r.type==='消费获取').reduce((s,r)=>s+r.points,0);
     return `
     <div class="page active">
         <div class="page-header"><div><h1>积分管理</h1><div class="breadcrumb">会员管理 / 积分管理</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()}</div></div>
         <div class="page-body">
             <div class="dashboard-grid">
-                <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num">${totalPoints}</div><div class="stat-label">现有积分余额</div></div>
-                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" style="color:#b87c1a;">${totalCumPoints}</div><div class="stat-label">累计积分总计</div></div>
-                <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" style="color:#2a7a3b;">¥${formatMoney(totalSpentAll)}</div><div class="stat-label">累计消费总额</div></div>
-                <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num" style="color:#2a7a3b;">${totalEarned}</div><div class="stat-label">消费获取积分</div></div>
-                <div class="stat-card"><div class="stat-icon">🎁</div><div class="stat-num" style="color:#b87c1a;">${totalExchanged}</div><div class="stat-label">累计兑换积分</div></div>
-                <div class="stat-card"><div class="stat-icon">👤</div><div class="stat-num">${members.filter(m=>m.points>0).length}</div><div class="stat-label">有积分会员</div></div>
+                <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num" id="statPtsBalance">-</div><div class="stat-label">现有积分余额</div></div>
+                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" id="statPtsCumulative" style="color:#b87c1a;">-</div><div class="stat-label">累计积分总计</div></div>
+                <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" id="statPtsSpent" style="color:#2a7a3b;">-</div><div class="stat-label">累计消费总额</div></div>
+                <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num" id="statPtsEarned" style="color:#2a7a3b;">-</div><div class="stat-label">消费获取积分</div></div>
+                <div class="stat-card"><div class="stat-icon">🎁</div><div class="stat-num" id="statPtsExchanged" style="color:#b87c1a;">-</div><div class="stat-label">累计兑换积分</div></div>
+                <div class="stat-card"><div class="stat-icon">👤</div><div class="stat-num" id="statPtsHasPoints">-</div><div class="stat-label">有积分会员</div></div>
             </div>
             <div class="action-bar">
                 <div class="btn-group">
@@ -4015,8 +4080,25 @@ pageRenderers['member_points'] = function() {
         </div>
     </div>`;
 };
+function updatePointsStats() {
+    const members = loadData('members');
+    const records = loadData('memberPointsRecords');
+    const totalPoints = members.reduce((s,m)=>s+(m.points||0),0);
+    const totalCumPoints = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
+    const totalSpentAll = members.reduce((s,m)=>s+(m.totalSpent||0),0);
+    const totalExchanged = records.filter(r=>r.type==='积分兑换').reduce((s,r)=>s+Math.abs(r.points),0);
+    const totalEarned = records.filter(r=>r.type==='消费获取').reduce((s,r)=>s+r.points,0);
+    const el = function(id,val){var e=document.getElementById(id);if(e)e.textContent=val;};
+    el('statPtsBalance', totalPoints);
+    el('statPtsCumulative', totalCumPoints);
+    el('statPtsSpent', '¥'+formatMoney(totalSpentAll));
+    el('statPtsEarned', totalEarned);
+    el('statPtsExchanged', totalExchanged);
+    el('statPtsHasPoints', members.filter(function(m){return m.points>0;}).length);
+}
 function init_member_points() {
-    refreshCurrentTable = () => renderTableData(loadData('members'),
+    updatePointsStats();
+    refreshCurrentTable = () => { updatePointsStats(); renderTableData(loadData('members'),
         [{key:'name'},{key:'phone'},{key:'level',render:m=>{
             const lvl = loadData('memberLevels').find(l=>l.name===m.level);
             const color = lvl?lvl.cardColor:'#9e9e9e';
@@ -4031,13 +4113,14 @@ function init_member_points() {
             {label:'清零',action:m=>{if(m.status==='冻结'){alert('冻结状态的会员无法进行积分清零');return;}if(!confirm(`确定将"${m.name}"的积分清零吗？`))return;clearMemberPoints(m);}},
             {label:'流水',action:viewMemberPoints}]),
         (item,term)=>item.name.includes(term)||item.phone.includes(term)
-    );
+    ); };
     refreshCurrentTable();
 }
 function viewMemberPoints(m) {
-    const records = loadData('memberPointsRecords').filter(r=>r.memberId===m.id).reverse();
-    openModal('积分流水 - '+m.name, `
-        <p style="margin-bottom:12px;">现有积分: <strong style="color:#2b6e3c;">${m.points||0}</strong> | 累积积分: <strong style="color:#b87c1a;">${m.cumulativePoints||0}</strong> | 累计消费: <strong>¥${formatMoney(m.totalSpent)}</strong></p>
+    const freshMember = loadData('members').find(x=>x.id===m.id) || m;
+    const records = loadData('memberPointsRecords').filter(r=>r.memberId===freshMember.id).reverse();
+    openModal('积分流水 - '+freshMember.name, `
+        <p style="margin-bottom:12px;">现有积分: <strong style="color:#2b6e3c;">${freshMember.points||0}</strong> | 累积积分: <strong style="color:#b87c1a;">${freshMember.cumulativePoints||0}</strong> | 累计消费: <strong>¥${formatMoney(freshMember.totalSpent)}</strong></p>
         ${records.length>0 ? `<table class="data-table" style="min-width:450px;"><thead><tr><th>时间</th><th>类型</th><th>积分变动</th><th>余额</th><th>操作人</th><th>备注</th></tr></thead><tbody>${records.map(r=>`<tr><td>${r.time}</td><td><span class="badge ${r.points>=0?'badge-on':'badge-warn'}">${r.type}</span></td><td style="color:${r.points>=0?'#2a7a3b':'#c23d2e'};font-weight:600;">${r.points>=0?'+':''}${r.points}</td><td>${r.balance}</td><td>${r.operator}</td><td>${r.note}</td></tr>`).join('')}</tbody></table>` : '<p style="color:#819e73;">暂无积分记录</p>'}
         `,
         `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
@@ -4063,9 +4146,9 @@ function doBatchAddPoints() {
     const m = members.find(x=>x.id===mid);
     if(!m) return;
     if(!confirm(`确定向"${m.name}"赠送 ${pts} 积分吗？\n备注: ${note||'无'}`)) return;
+    if(!confirm(`再次确认：将向"${m.name}"赠送 ${pts} 积分\n当前积分: ${m.points} → ${m.points+pts}\n此操作不可撤销！`)) return;
     if(m.status==='冻结') { alert('冻结状态的会员无法赠送积分'); return; }
     m.points += pts;
-    m.cumulativePoints = (m.cumulativePoints||0) + pts;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'活动赠送', points:pts, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'活动赠送'});
@@ -4093,7 +4176,6 @@ function doAdjustPoints(mid) {
     if(m.points + adj < 0) { alert('积分不足，调整后不能为负数'); return; }
     if(!confirm(`确定${adj>0?'增加':'减少'} "${m.name}" ${Math.abs(adj)} 积分吗？`)) return;
     m.points += adj;
-    if (adj > 0) m.cumulativePoints = (m.cumulativePoints||0) + adj;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:adj>0?'积分调整(增加)':'积分调整(减少)', points:adj, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'管理员调整'});
@@ -4104,7 +4186,7 @@ function doAdjustPoints(mid) {
     showToast(`积分调整成功，${m.name} 当前积分: ${m.points}`);
 }
 function exchangePoints(m) {
-    // 等级权限控制：青铜会员不支持积分兑换
+    if (m.status === '冻结') { alert('冻结状态的会员无法进行积分兑换'); return; }
     if (m.level === '青铜会员') {
         alert('青铜会员暂不支持积分兑换功能，请升级至白银及以上等级。');
         return;
@@ -4155,6 +4237,7 @@ function doExchangePoints(mid) {
     showToast(`兑换成功！获得 ${reward}，剩余积分: ${m.points}`);
 }
 function clearMemberPoints(m) {
+    if (m.status === '冻结') { alert('冻结状态的会员无法进行积分清零'); return; }
     if(m.points<=0) { showToast('该会员当前没有积分'); return; }
     if(!confirm(`确定清零会员"${m.name}"的全部积分吗？\n当前积分: ${m.points}\n此操作不可恢复！`)) return;
     if(!confirm(`再次确认：将清零 ${m.name} 的 ${m.points} 积分`)) return;
@@ -4185,6 +4268,7 @@ function doBatchClearPoints() {
     const selected = [...document.querySelectorAll('.clear-mem-cb:checked')].map(cb=>parseInt(cb.value));
     if(selected.length===0) { alert('请选择至少一个会员'); return; }
     if(!confirm(`确定清零选中的 ${selected.length} 名会员的全部积分吗？\n此操作不可恢复！`)) return;
+    if(!confirm(`再次确认：将永久清零 ${selected.length} 名会员的所有积分\n请确认这些会员的积分数据已备份\n此操作不可撤销！`)) return;
     const members = loadData('members');
     const records = loadData('memberPointsRecords');
     let totalCleared = 0;
