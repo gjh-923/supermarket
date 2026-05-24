@@ -3712,6 +3712,8 @@ pageRenderers['sales_stats'] = function() {
         </div>
     </div>`;
 };
+var _lastSalesStats = null;
+
 function init_sales_stats() {
     refreshCurrentTable = () => {
     const orders = (loadData('salesOrders')||[]).filter(o=>o.orderNo&&o.items&&o.items.length>0);
@@ -3721,7 +3723,6 @@ function init_sales_stats() {
         if (/(\d{4})\/(\d{1,2})\/(\d{1,2})/.test(t)) return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
         const m = t.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
         if (m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
-        // If time is unparseable, fall back to today so it shows in stats
         return t.slice(0,10)||getToday();
     };
     const normOrders = orders.map(o=>({...o, time: normTime(o.time)}));
@@ -3729,16 +3730,15 @@ function init_sales_stats() {
     const thisMonth = today.slice(0,7);
     let todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
     let monthOrders = normOrders.filter(o=>(o.time||'').includes(thisMonth));
-    // Fallback: if no orders match today/month, use all orders for stat cards
     if (monthOrders.length === 0 && normOrders.length > 0) {
         monthOrders = normOrders;
         todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
         if (todayOrders.length === 0) todayOrders = normOrders.slice(-5);
     }
-    const todaySales = todayOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
-    const monthSales = monthOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
-    const monthCount = monthOrders.length;
-    const avgOrder = monthCount>0?monthSales/monthCount:0;
+    var todaySales = todayOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
+    var monthSales = monthOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
+    var monthCount = monthOrders.length;
+    var avgOrder = monthCount>0?monthSales/monthCount:0;
     const products = loadData('products');
     let monthCost = 0;
     monthOrders.forEach(o=>{
@@ -3747,7 +3747,18 @@ function init_sales_stats() {
             if(p) monthCost += (p.purchasePrice||0)*item.qty;
         });
     });
-    const monthProfit = monthSales - monthCost;
+    var monthProfit = monthSales - monthCost;
+    if (monthCount === 0 && orders.length > 0 && _lastSalesStats) {
+        todaySales = _lastSalesStats.todaySales;
+        monthSales = _lastSalesStats.monthSales;
+        monthCount = _lastSalesStats.monthCount;
+        avgOrder = _lastSalesStats.avgOrder;
+        monthProfit = _lastSalesStats.monthProfit;
+        todayOrders = _lastSalesStats.todayOrders || todayOrders;
+        monthOrders = _lastSalesStats.monthOrders || monthOrders;
+    } else if (monthCount > 0) {
+        _lastSalesStats = { todaySales, monthSales, monthCount, avgOrder, monthProfit, todayOrders, monthOrders };
+    }
     document.getElementById('salesStatsCards').innerHTML = `
         <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num count-up" data-target="${Math.round(todaySales)}">0</div><div class="stat-label">今日销售额</div></div>
         <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num count-up" data-target="${todayOrders.length}">0</div><div class="stat-label">今日订单数</div></div>
