@@ -5322,10 +5322,12 @@ function openScheduleDay(dateStr) {
                 <option value="晚班" ${curShift==='晚班'?'selected':''}>晚班</option>
                 <option value="休息" ${curShift==='休息'?'selected':''}>休息</option>
             </select>
+            ${curShift ? `<button onclick="document.getElementById('shiftSel_${e.id}').value=''" style="padding:2px 8px;border-radius:10px;border:1px solid #e8c4c4;background:#fff5f5;color:#c23d2e;cursor:pointer;font-size:0.65rem;font-family:inherit;" title="移除此员工当日排班">✕</button>` : ''}
         </div>`;
     }).join('');
-    openModal(`排班 - ${dateStr}`, `<p style="font-size:0.75rem;color:#819e73;margin-bottom:12px;">为 ${dateStr} 设置员工班次 <span style="font-size:0.65rem;">（显示当月累计班次）</span></p>${empRows}`,
-        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveDaySchedule('${dateStr}')">保存当日排班</button>`);
+    const hasAnySchedule = daySchedules.length > 0;
+    openModal(`排班 - ${dateStr}`, `<p style="font-size:0.75rem;color:#819e73;margin-bottom:12px;">为 ${dateStr} 设置员工班次 <span style="font-size:0.65rem;">（显示当月累计班次）</span>${hasAnySchedule ? ` · 当日已排 <b>${daySchedules.length}</b> 人` : ' · 当日未排班'}</p>${empRows}`,
+        `${hasAnySchedule ? `<button class="btn btn-outline" style="color:#c23d2e;border-color:#e8c4c4;" onclick="clearDaySchedule('${dateStr}')">🗑 清除当日所有排班</button>` : ''}<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveDaySchedule('${dateStr}')">保存当日排班</button>`);
 }
 function saveDaySchedule(dateStr) {
     const employees = loadData('employees');
@@ -5353,6 +5355,16 @@ function saveDaySchedule(dateStr) {
         _apiSaveScheduleBatch(dateStr, shifts).catch(e => console.warn('API排班保存失败:', e.message));
     }
 }
+function clearDaySchedule(dateStr) {
+    if(!confirm(`确定清除 ${dateStr} 的所有排班记录吗？`)) return;
+    let schedules = loadData('schedules');
+    schedules = schedules.filter(s=>s.date!==dateStr);
+    saveData('schedules', schedules);
+    closeModal();
+    navigateTo('employee_schedule');
+    addLog(`清除排班: ${dateStr}`);
+    showToast(`${dateStr} 排班已全部清除`);
+}
 function openBatchSchedule() {
     const lastDay = new Date(scheduleYear, scheduleMonth, 0);
     const daysInMonth = lastDay.getDate();
@@ -5369,11 +5381,14 @@ function openBatchSchedule() {
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="applyBatchSchedule()">应用排班</button>`);
 }
 function viewEmpSchedule(empId, empName) {
+    const now = new Date();
+    const yr = scheduleYear || now.getFullYear();
+    const mo = scheduleMonth || (now.getMonth() + 1);
     const schedules = loadData('schedules');
-    const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
+    const monthStr = `${yr}-${String(mo).padStart(2,'0')}`;
     const monthSchedules = schedules.filter(s => s.date.startsWith(monthStr) && String(s.employee_id) === String(empId));
-    const daysInMonth = new Date(scheduleYear, scheduleMonth, 0).getDate();
-    const firstDayOfWeek = new Date(scheduleYear, scheduleMonth - 1, 1).getDay();
+    const daysInMonth = new Date(yr, mo, 0).getDate();
+    const firstDayOfWeek = new Date(yr, mo - 1, 1).getDay();
     const shiftMap = {};
     monthSchedules.forEach(s => { shiftMap[s.date] = s.shift; });
     const counts = { '早班': 0, '中班': 0, '晚班': 0, '休息': 0 };
@@ -5399,7 +5414,7 @@ function viewEmpSchedule(empId, empName) {
     // Day cells
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
-        const dow = new Date(scheduleYear, scheduleMonth - 1, d).getDay();
+        const dow = new Date(yr, mo - 1, d).getDay();
         const isWeekend = dow === 0 || dow === 6;
         const shift = shiftMap[dateStr] || '';
         const sc = shiftColors[shift];
@@ -5418,7 +5433,7 @@ function viewEmpSchedule(empId, empName) {
         gridHtml += `<div style="${cellStyle}">${cellHtml}</div>`;
     }
     gridHtml += '</div>';
-    openModal(`${empName} 的排班表 - ${scheduleYear}年${scheduleMonth}月`,
+    openModal(`${empName} 的排班表 - ${yr}年${mo}月`,
         `<div style="font-size:0.8rem;">
             <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
                 <span style="font-weight:600;">班次统计:</span>

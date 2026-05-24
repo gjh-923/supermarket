@@ -1526,7 +1526,8 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
       }
     }
 
-    // ID-based merge: client data overwrites same-ID server data, server keeps records not in client
+    // ID-based merge: client data is the source of truth (deletions are honored)
+    // Client records as base, then add server-only records that client doesn't have
     const existing = db.prepare('SELECT data FROM data_store WHERE key = ?').get(storeKey);
     let merged = rows;
     if (existing && existing.data) {
@@ -1535,9 +1536,11 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
         if (Array.isArray(existingRows) && existingRows.length > 0 && rows.length > 0
             && typeof rows[0] === 'object' && rows[0] !== null && 'id' in rows[0]
             && typeof existingRows[0] === 'object' && existingRows[0] !== null && 'id' in existingRows[0]) {
-          const mergedMap = new Map(existingRows.map(r => [r.id, r]));
-          for (const row of rows) {
-            mergedMap.set(row.id, row); // client data overwrites same-ID server data
+          const mergedMap = new Map(rows.map(r => [r.id, r]));
+          for (const row of existingRows) {
+            if (!mergedMap.has(row.id)) {
+              mergedMap.set(row.id, row); // retain server-only records from other clients
+            }
           }
           merged = Array.from(mergedMap.values());
           merged.sort((a, b) => (b.id || 0) - (a.id || 0));
