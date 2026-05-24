@@ -64,6 +64,47 @@ function paginate(items, page = 1, pageSize = 10) {
 }
 
 // Sync SQL tables to data_store JSON after mutations (checkout, purchase, inventory changes, etc.)
+// 将 data_store 中同步的数据回写到对应的 SQL 表，防止 syncAffectedTablesToDataStore
+// 因 SQL 表为空而覆盖 data_store 已同步的数据
+function _syncToSqlTable(storeKey, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+
+  if (storeKey === 'products') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO products
+      (id, code, name, category, supplier, purchase_price, retail_price, stock, unit, status, sales, produce_date, expiry_date, description, image_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const p of items) {
+        stmt.run(p.id, p.code || '', p.name || '', p.category || '', p.supplier || '',
+          p.purchasePrice || p.purchase_price || 0, p.retailPrice || p.retail_price || 0,
+          p.stock || 0, p.unit || '个', p.status || '上架', p.sales || 0,
+          p.produceDate || p.produce_date || '', p.expiryDate || p.expiry_date || '',
+          p.description || '', p.image || p.imageUrl || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  if (storeKey === 'members') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO members
+      (id, card_no, name, gender, birthday, phone, email, address, level, points, cumulative_points, join_date, total_spent, status, last_consume_date, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const m of items) {
+        stmt.run(m.id, m.cardNo || '', m.name || '', m.gender || '', m.birthday || '',
+          m.phone || '', m.email || '', m.address || '', m.level || '普通会员',
+          m.points || 0, m.cumulativePoints || 0, m.joinDate || '',
+          m.totalSpent || 0, m.status || '正常', m.lastConsumeDate || '', m.source || '门店注册');
+      }
+    });
+    insertMany(rows);
+  }
+
+  if (storeKey === 'categories') {
+    // categories 仅存 data_store，无对应 SQL 表结构需要同步
+  }
+}
+
 function syncAffectedTablesToDataStore() {
   const upsert = db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)');
 
@@ -1560,6 +1601,9 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
 
     db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)')
       .run(storeKey, JSON.stringify(merged));
+
+    // 同步到对应的 SQL 表，防止 syncAffectedTablesToDataStore 用空表覆盖 data_store
+    try { _syncToSqlTable(storeKey, merged); } catch(e) { console.warn('SQL表同步失败:', storeKey, e.message); }
 
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `同步数据: ${storeKey} (${rows.length}条)`);

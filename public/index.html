@@ -2265,8 +2265,6 @@ function toggleCategoryStatus(catId) {
     saveData('categories', cats);
     _syncCategoriesToServer();
     init_category();
-    // 保持当前筛选条件重新渲染
-    filterCatList();
     addLog('分类状态切换: ' + cat.name + ' → ' + cat.status);
     showToast('"' + cat.name + '" 已设为' + cat.status + '（' + (cat.status==='隐藏'?'POS收银台不可见':'POS收银台可见') + '）');
 }
