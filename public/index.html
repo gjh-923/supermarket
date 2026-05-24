@@ -561,9 +561,9 @@ function _normalizeData(key, data) {
                 try { obj.items = JSON.parse(obj.items); } catch(e) { obj.items = []; }
             }
             if (!Array.isArray(obj.items)) obj.items = [];
-            // 按 orderNo 去重：保留信息更完整的版本
+            // 按 orderNo 去重：丢弃无订单号的无效记录
             const key = obj.orderNo;
-            if (!key) { deduped.push(obj); return; }
+            if (!key) return; // discard invalid orders without orderNo
             const existing = seen.get(key);
             if (!existing) { seen.set(key, obj); deduped.push(obj); }
             else if ((obj.cashier || obj.paymentMethod) && !(existing.cashier || existing.paymentMethod)) {
@@ -3721,21 +3721,32 @@ pageRenderers['sales_stats'] = function() {
     </div>`;
 };
 function init_sales_stats() {
+    // One-time cleanup: remove invalid orders without orderNo
+    const raw = loadData('salesOrders')||[];
+    const clean = raw.filter(o=>o.orderNo);
+    if (clean.length < raw.length) { saveData('salesOrders', clean); }
     refreshCurrentTable = () => {
-    const orders = loadData('salesOrders');
+    const orders = (loadData('salesOrders')||[]).filter(o=>o.orderNo&&o.items&&o.items.length>0);
     const normTime = t => {
         t = t || '';
         if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
         if (/(\d{4})\/(\d{1,2})\/(\d{1,2})/.test(t)) return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
         const m = t.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
         if (m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
-        return t.slice(0, 10);
+        // If time is unparseable, fall back to today so it shows in stats
+        return t.slice(0,10)||getToday();
     };
     const normOrders = orders.map(o=>({...o, time: normTime(o.time)}));
     const today = getToday();
     const thisMonth = today.slice(0,7);
-    const todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
-    const monthOrders = normOrders.filter(o=>(o.time||'').includes(thisMonth));
+    let todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
+    let monthOrders = normOrders.filter(o=>(o.time||'').includes(thisMonth));
+    // Fallback: if no orders match today/month, use all orders for stat cards
+    if (monthOrders.length === 0 && normOrders.length > 0) {
+        monthOrders = normOrders;
+        todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
+        if (todayOrders.length === 0) todayOrders = normOrders.slice(-5);
+    }
     const todaySales = todayOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
     const monthSales = monthOrders.reduce((s,o)=>s+(o.totalAmount||0),0);
     const monthCount = monthOrders.length;
