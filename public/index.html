@@ -845,7 +845,7 @@ const DEFAULT_DATA = {
         { name:'钻石会员', minSpent:20000, discount:88, pointsRate:2, cardColor:'#2196F3', benefits:'尊享8.8折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' },
         { name:'黄金会员', minSpent:5000, discount:93, pointsRate:1.5, cardColor:'#FF9800', benefits:'9.3折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验 | 免费停车2小时' },
         { name:'白银会员', minSpent:1000, discount:96, pointsRate:1.2, cardColor:'#607D8B', benefits:'9.6折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
-        { name:'青铜会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#8D6E63', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价日' }
+        { name:'普通会员', minSpent:0, discount:100, pointsRate:1, cardColor:'#8D6E63', benefits:'消费1元积1分 | 新人专享优惠券 | 每周三会员特价日' }
     ],
     suppliers: [
         { id:1,code:'GYS20240001',name:'美味园',contact:'张经理',phone:'13900001001',email:'meiweiyuan@supplier.com',address:'北京市朝阳区食品工业园A区',products:'糕点类',level:'A级',status:'合作中',cooperationDate:'2023-01-10',bankAccount:'6222021234567890',taxId:'91110108MA01XXXX1X',notes:'品质稳定，供货及时，长期合作伙伴',supplyCapacity:'月供5000件' },
@@ -1218,6 +1218,10 @@ function migrateData() {
     const levels = loadData('memberLevels');
     const defaultLevel = DEFAULT_DATA.memberLevels[0];
     let levelsChanged = false;
+    // 迁移：将旧名称"青铜会员"统一改为"普通会员"
+    levels.forEach(l => {
+        if (l.name === '青铜会员') { l.name = '普通会员'; levelsChanged = true; }
+    });
     levels.forEach(l => {
         // 补充缺失字段
         Object.keys(defaultLevel).forEach(key => {
@@ -1232,6 +1236,12 @@ function migrateData() {
         }
     });
     if (levelsChanged) saveData('memberLevels', levels);
+    // 同步更新会员表中的旧等级名称（重新加载以获取去重后的数据）
+    let updatedMembers = loadData('members');
+    updatedMembers.forEach(m => {
+        if (m.level === '青铜会员') { m.level = '普通会员'; }
+    });
+    saveData('members', updatedMembers);
 
     // 自动匹配所有会员等级（按积分）
     autoMatchAllMemberLevels();
@@ -4555,8 +4565,8 @@ function doAdjustPoints(mid) {
 }
 function exchangePoints(m) {
     if (m.status === '冻结') { alert('冻结状态的会员无法进行积分兑换'); return; }
-    if (m.level === '青铜会员') {
-        alert('青铜会员暂不支持积分兑换功能，请升级至白银及以上等级。');
+    if (m.level === '普通会员') {
+        alert('普通会员暂不支持积分兑换功能，请升级至白银及以上等级。');
         return;
     }
     const exchangeOptions = loadData('exchangeRewards').filter(r=>r.enabled!==false).map(r=>({points:r.points, reward:r.name, type:r.type, rewardId:r.id}));
