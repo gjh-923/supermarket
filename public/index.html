@@ -3449,7 +3449,9 @@ function autoMatchAllMemberLevels() {
 pageRenderers['member_points'] = function() {
     const members = loadData('members');
     const records = loadData('memberPointsRecords');
-    const totalPoints = members.reduce((s,m)=>s+m.points,0);
+    const totalPoints = members.reduce((s,m)=>s+(m.points||0),0);
+    const totalCumPoints = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
+    const totalSpentAll = members.reduce((s,m)=>s+(m.totalSpent||0),0);
     const totalExchanged = records.filter(r=>r.type==='积分兑换').reduce((s,r)=>s+Math.abs(r.points),0);
     const totalEarned = records.filter(r=>r.type==='消费获取').reduce((s,r)=>s+r.points,0);
     return `
@@ -3457,8 +3459,10 @@ pageRenderers['member_points'] = function() {
         <div class="page-header"><div><h1>积分管理</h1><div class="breadcrumb">会员管理 / 积分管理</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()}</div></div>
         <div class="page-body">
             <div class="dashboard-grid">
-                <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num">${totalPoints}</div><div class="stat-label">积分总余额</div></div>
-                <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num" style="color:#2a7a3b;">${totalEarned}</div><div class="stat-label">累计获取积分</div></div>
+                <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num">${totalPoints}</div><div class="stat-label">现有积分余额</div></div>
+                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" style="color:#b87c1a;">${totalCumPoints}</div><div class="stat-label">累计积分总计</div></div>
+                <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" style="color:#2a7a3b;">¥${formatMoney(totalSpentAll)}</div><div class="stat-label">累计消费总额</div></div>
+                <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num" style="color:#2a7a3b;">${totalEarned}</div><div class="stat-label">消费获取积分</div></div>
                 <div class="stat-card"><div class="stat-icon">🎁</div><div class="stat-num" style="color:#b87c1a;">${totalExchanged}</div><div class="stat-label">累计兑换积分</div></div>
                 <div class="stat-card"><div class="stat-icon">👤</div><div class="stat-num">${members.filter(m=>m.points>0).length}</div><div class="stat-label">有积分会员</div></div>
             </div>
@@ -3473,7 +3477,7 @@ pageRenderers['member_points'] = function() {
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>姓名</th><th>手机号</th><th>等级</th><th>当前积分</th><th>累计消费</th><th>操作</th></tr></thead>
+                    <thead><tr><th>姓名</th><th>手机号</th><th>等级</th><th>现有积分</th><th>累积积分</th><th>累计消费</th><th>操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -3488,8 +3492,9 @@ function init_member_points() {
             const color = lvl?lvl.cardColor:'#9e9e9e';
             return `<span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}44;">${m.level}</span>`;
         }},
-         {key:'points',render:m=>`<span style="font-weight:600;color:${m.points>0?'#2b6e3c':'#819e73'};">${m.points}</span>`},
-         {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)}],
+         {key:'points',render:m=>`<span style="font-weight:600;color:${m.points>0?'#2b6e3c':'#819e73'};">${m.points||0}</span>`},
+         {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
+         {key:'totalSpent',render:m=>`<span style="font-weight:600;color:#1f3b2c;">¥${formatMoney(m.totalSpent)}</span>`}],
         (currentUser.role==='cashier'?[{label:'流水',action:viewMemberPoints}]:[{label:'积分调整',action:adjustPoints},{label:'积分兑换',action:exchangePoints},{label:'清零',action:clearMemberPoints},{label:'流水',action:viewMemberPoints}]),
         (item,term)=>item.name.includes(term)||item.phone.includes(term)
     );
@@ -3498,7 +3503,7 @@ function init_member_points() {
 function viewMemberPoints(m) {
     const records = loadData('memberPointsRecords').filter(r=>r.memberId===m.id).reverse();
     openModal('积分流水 - '+m.name, `
-        <p style="margin-bottom:12px;">当前积分: <strong style="color:#2b6e3c;">${m.points}</strong></p>
+        <p style="margin-bottom:12px;">现有积分: <strong style="color:#2b6e3c;">${m.points||0}</strong> | 累积积分: <strong style="color:#b87c1a;">${m.cumulativePoints||0}</strong> | 累计消费: <strong>¥${formatMoney(m.totalSpent)}</strong></p>
         ${records.length>0 ? `<table class="data-table" style="min-width:450px;"><thead><tr><th>时间</th><th>类型</th><th>积分变动</th><th>余额</th><th>操作人</th><th>备注</th></tr></thead><tbody>${records.map(r=>`<tr><td>${r.time}</td><td><span class="badge ${r.points>=0?'badge-on':'badge-warn'}">${r.type}</span></td><td style="color:${r.points>=0?'#2a7a3b':'#c23d2e'};font-weight:600;">${r.points>=0?'+':''}${r.points}</td><td>${r.balance}</td><td>${r.operator}</td><td>${r.note}</td></tr>`).join('')}</tbody></table>` : '<p style="color:#819e73;">暂无积分记录</p>'}
         `,
         `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
@@ -4789,15 +4794,17 @@ function _finSelectModule(page, el) {
     if (typeof initFn === 'function') initFn();
 }
 function finParentPage(title, breadcrumb, children) {
-    _finSelectedPage = children[0]?.page;
+    const childPages = children.map(c=>c.page);
+    if (!childPages.includes(_finSelectedPage)) _finSelectedPage = children[0]?.page;
+    const activePage = _finSelectedPage;
     let previewContent = '';
-    if (_finSelectedPage && pageRenderers[_finSelectedPage]) {
-        previewContent = pageRenderers[_finSelectedPage]();
+    if (activePage && pageRenderers[activePage]) {
+        previewContent = pageRenderers[activePage]();
     }
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
     <div class="page-body" style="padding:0 0 16px 0;">
         <div class="fin-tab-bar">
-            ${children.map(c=>`<div class="fin-tab-btn ${_finSelectedPage===c.page?'active':''}" onclick="_finSelectModule('${c.page}',this)">
+            ${children.map(c=>`<div class="fin-tab-btn ${activePage===c.page?'active':''}" onclick="_finSelectModule('${c.page}',this)">
                 <span style="margin-right:5px;">${c.icon}</span>${c.name}
             </div>`).join('')}
         </div>
@@ -4811,12 +4818,12 @@ pageRenderers['fin_report'] = function() { return finParentPage('财务报表生
 pageRenderers['fin_cost'] = function() { return finParentPage('成本核算','财务管理 / 成本核算',[{page:'finance_cost',icon:'🔧',name:'成本核算',desc:'库存成本、已售成本、采购成本及成本结转率分析——系统自动计算，无人工干预'}]); };
 pageRenderers['fin_budget'] = function() { return finParentPage('预算管理','财务管理 / 预算管理',[{page:'finance_budget',icon:'🎯',name:'预算管理',desc:'年度/月度预算编制、执行率跟踪及预算调整'}]); };
 pageRenderers['fin_tax'] = function() { return finParentPage('税务管理','财务管理 / 税务管理',[{page:'finance_tax',icon:'🏛️',name:'税务管理',desc:'税种管理、税务申报及税款缴纳记录'}]); };
-// Finance parent page init — triggers first tab's init after DOM ready
-function init_fin_cashier() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance',el); }
-function init_fin_report() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_report',el); }
-function init_fin_cost() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_cost',el); }
-function init_fin_budget() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_budget',el); }
-function init_fin_tax() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_tax',el); }
+// Finance parent page init — triggers active tab's init after DOM ready
+function init_fin_cashier() { var el=document.querySelector('.fin-tab-btn.active'); if(el&&_finSelectedPage) _finSelectModule(_finSelectedPage,el); }
+function init_fin_report() { var el=document.querySelector('.fin-tab-btn.active'); if(el&&_finSelectedPage) _finSelectModule(_finSelectedPage,el); }
+function init_fin_cost() { var el=document.querySelector('.fin-tab-btn.active'); if(el&&_finSelectedPage) _finSelectModule(_finSelectedPage,el); }
+function init_fin_budget() { var el=document.querySelector('.fin-tab-btn.active'); if(el&&_finSelectedPage) _finSelectModule(_finSelectedPage,el); }
+function init_fin_tax() { var el=document.querySelector('.fin-tab-btn.active'); if(el&&_finSelectedPage) _finSelectModule(_finSelectedPage,el); }
 
 
 // -- 预算管理 --
@@ -5161,9 +5168,8 @@ pageRenderers['employee_schedule'] = function() {
                     const emp = employees.find(e => e.id === s.employee_id);
                     const shiftName = s.shift || '休息';
                     const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
-                    const shiftAbbr = {'早班':'早','中班':'中','晚班':'晚','休息':'休'}[shiftName]||shiftName;
                     const empAbbr = emp ? (emp.name||'').slice(0,3) : '?';
-                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};" title="${emp.name} - ${shiftName}">${empAbbr}·${shiftAbbr}</span>`;
+                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};" title="${emp.name} - ${shiftName}">${empAbbr}·${shiftName}</span>`;
                 });
                 const tdStyle = isToday ? 'background:#e8f5e0;border:2px solid #4caf50;font-weight:700;' : isWeekend ? 'background:#fdfdf7;' : '';
                 cells += `<td class="sch-cell" onclick="openScheduleDay('${dateStr}')" style="${tdStyle}"><div class="sch-day">${d}${isToday ? '<span style="font-size:0.5rem;color:#4caf50;">今天</span>' : ''}</div>${tagsHtml}</td>`;
