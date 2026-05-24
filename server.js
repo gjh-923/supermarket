@@ -93,8 +93,9 @@ function syncAffectedTablesToDataStore() {
   upsert.run('members', JSON.stringify(members.map(m => ({
     id: m.id, cardNo: m.card_no, name: m.name, gender: m.gender,
     birthday: m.birthday, phone: m.phone, email: m.email, address: m.address,
-    level: m.level, points: m.points, joinDate: m.join_date,
-    totalSpent: m.total_spent, status: m.status, lastConsumeDate: m.last_consume_date,
+    level: m.level, points: m.points, cumulativePoints: m.cumulative_points || 0,
+    joinDate: m.join_date, totalSpent: m.total_spent,
+    status: m.status, lastConsumeDate: m.last_consume_date,
     source: m.source
   }))));
 
@@ -337,10 +338,11 @@ app.get('/api/members', (req, res) => {
 app.post('/api/members', authMiddleware, (req, res) => {
   try {
     const m = req.body;
-    const stmt = db.prepare(`INSERT INTO members (card_no, name, gender, birthday, phone, email, address, level, points, join_date, total_spent, status, last_consume_date, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const stmt = db.prepare(`INSERT INTO members (card_no, name, gender, birthday, phone, email, address, level, points, cumulative_points, join_date, total_spent, status, last_consume_date, source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const result = stmt.run(m.cardNo || ('HY' + Date.now()), m.name, m.gender || '', m.birthday || '',
       m.phone || '', m.email || '', m.address || '', m.level || '普通会员', m.points || 0,
+      m.cumulativePoints || 0,
       m.joinDate || new Date().toISOString().slice(0, 10), m.totalSpent || 0, m.status || '正常',
       m.lastConsumeDate || '', m.source || '门店注册');
     const member = db.prepare('SELECT * FROM members WHERE id = ?').get(result.lastInsertRowid);
@@ -356,9 +358,9 @@ app.post('/api/members', authMiddleware, (req, res) => {
 app.put('/api/members/:id', authMiddleware, (req, res) => {
   try {
     const m = req.body;
-    db.prepare(`UPDATE members SET card_no=?, name=?, gender=?, birthday=?, phone=?, email=?, address=?, level=?, points=?, join_date=?, total_spent=?, status=?, last_consume_date=?, source=? WHERE id=?`)
+    db.prepare(`UPDATE members SET card_no=?, name=?, gender=?, birthday=?, phone=?, email=?, address=?, level=?, points=?, cumulative_points=?, join_date=?, total_spent=?, status=?, last_consume_date=?, source=? WHERE id=?`)
       .run(m.cardNo, m.name, m.gender || '', m.birthday || '', m.phone || '', m.email || '', m.address || '',
-        m.level || '普通会员', m.points || 0, m.joinDate || '', m.totalSpent || 0, m.status || '正常',
+        m.level || '普通会员', m.points || 0, m.cumulativePoints || 0, m.joinDate || '', m.totalSpent || 0, m.status || '正常',
         m.lastConsumeDate || '', m.source || '门店注册', req.params.id);
     const member = db.prepare('SELECT * FROM members WHERE id = ?').get(req.params.id);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
@@ -428,6 +430,10 @@ app.post('/api/member-points-records', authMiddleware, (req, res) => {
   // Update member points
   if (r.memberId) {
     db.prepare('UPDATE members SET points = points + ? WHERE id = ?').run(r.points || 0, r.memberId);
+    // For positive additions, also update cumulative_points
+    if ((r.points || 0) > 0) {
+      db.prepare('UPDATE members SET cumulative_points = cumulative_points + ? WHERE id = ?').run(r.points || 0, r.memberId);
+    }
   }
   res.json(okMsg('添加成功'));
 });
@@ -816,8 +822,8 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
         // Give points for the purchase
         const pointsEarned = Math.floor(totalAmount * (level ? level.points_rate : 1));
         if (pointsEarned > 0) {
-          db.prepare('UPDATE members SET points = points + ?, total_spent = total_spent + ? WHERE id = ?')
-            .run(pointsEarned, totalAmount, memberId);
+          db.prepare('UPDATE members SET points = points + ?, total_spent = total_spent + ?, cumulative_points = cumulative_points + ? WHERE id = ?')
+            .run(pointsEarned, totalAmount, totalAmount, memberId);
           db.prepare(`INSERT INTO member_points_records (member_id, member_name, type, points, balance, time, operator, note)
             VALUES (?, ?, '消费获取', ?, (SELECT points FROM members WHERE id=?), datetime('now','localtime'), ?, ?)`)
             .run(memberId, memberName, pointsEarned, memberId, req.user.name, `消费¥${totalAmount.toFixed(2)}奖励积分`);
@@ -833,10 +839,10 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
       if (member) {
         const levels = db.prepare('SELECT * FROM member_levels ORDER BY min_spent DESC').all();
         for (const lv of levels) {
-          if (member.points >= lv.min_spent && member.level !== lv.name) {
+          if ((member.cumulative_points || member.points) >= lv.min_spent && member.level !== lv.name) {
             db.prepare('UPDATE members SET level = ? WHERE id = ?').run(lv.name, memberId);
             db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
-              .run(req.user.name, `会员 ${member.name} 升级为 ${lv.name}（积分: ${member.points}）`);
+              .run(req.user.name, `会员 ${member.name} 升级为 ${lv.name}（累计积分: ${member.cumulative_points || member.points}）`);
             break;
           }
         }

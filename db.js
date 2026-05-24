@@ -77,6 +77,7 @@ function initDatabase() {
       address TEXT,
       level TEXT DEFAULT '普通会员',
       points INTEGER DEFAULT 0,
+      cumulative_points INTEGER DEFAULT 0,
       join_date TEXT,
       total_spent REAL DEFAULT 0,
       status TEXT DEFAULT '正常',
@@ -522,6 +523,11 @@ function initDatabase() {
     'CREATE INDEX IF NOT EXISTS idx_system_logs_time ON system_logs(time)',
     'CREATE INDEX IF NOT EXISTS idx_login_logs_login_time ON login_logs(login_time)',
   ];
+  // Migrate: add cumulative_points column for existing databases
+  try { db.exec('ALTER TABLE members ADD COLUMN cumulative_points INTEGER DEFAULT 0'); } catch(e) {}
+  // Migrate: set cumulative_points = points for existing members who have 0 cumulative
+  try { db.exec('UPDATE members SET cumulative_points = points WHERE cumulative_points = 0 AND points > 0'); } catch(e) {}
+
   for (const idx of indexes) {
     try { db.exec(idx); } catch (e) { /* index may already exist */ }
   }
