@@ -6436,22 +6436,39 @@ function renderSysLogStats() {
         <div class="mini-stat"><div class="mini-icon">👤</div><div><div class="mini-val">${todayLogins}</div><div class="mini-lbl">今日登录</div></div></div>
     `;
 }
+function getLogCategory(action) {
+    const a = action||'';
+    if(/安全|登录|密码|权限|认证/.test(a)) return {cat:'安全',cls:'badge-warn'};
+    if(/删除|清空|重置|撤销/.test(a)) return {cat:'操作',cls:'badge-off'};
+    if(/新增|创建|添加|录入/.test(a)) return {cat:'新增',cls:'badge-on'};
+    if(/编辑|修改|更新|调整/.test(a)) return {cat:'修改',cls:'badge'};
+    if(/导出|备份|下载/.test(a)) return {cat:'导出',cls:'badge'};
+    if(/错误|失败|异常/.test(a)) return {cat:'异常',cls:'badge-off'};
+    if(/执行|维护|部署/.test(a)) return {cat:'运维',cls:'badge-warn'};
+    if(/结算|销售|收银|退单|POS/.test(a)) return {cat:'交易',cls:'badge-on'};
+    return {cat:'其他',cls:''};
+}
 function renderSysLogTabContent() {
     renderSysLogStats();
     const container = document.getElementById('sysLogTabContent');
     if (sysLogTab === 'op') {
         const logs = [...loadData('systemLogs')].reverse();
         container.innerHTML = `
-            <div class="action-bar">
+            <div class="action-bar" style="flex-wrap:wrap;gap:8px;">
                 <div class="btn-group">
                     <button class="btn btn-danger" onclick="clearOpLogs()">清空日志</button>
                     <button class="btn btn-outline" onclick="exportOpLogs()">导出日志</button>
                 </div>
-                <div class="search-area"><input type="text" placeholder="搜索日志内容..." oninput="filterSysOpLogs(this.value)" autocomplete="off"></div>
+                <div style="display:flex;align-items:center;gap:6px;font-size:0.75rem;">
+                    <label>日期:</label><input type="date" id="sysOpDateFrom" onchange="applySysOpDateFilter()" style="width:130px;font-size:0.75rem;padding:4px 8px;border:1px solid #c8d6c0;border-radius:6px;">
+                    <span>至</span><input type="date" id="sysOpDateTo" onchange="applySysOpDateFilter()" style="width:130px;font-size:0.75rem;padding:4px 8px;border:1px solid #c8d6c0;border-radius:6px;">
+                    ${(sysOpLogDateFrom||sysOpLogDateTo)?`<span onclick="sysOpLogDateFrom='';sysOpLogDateTo='';sysOpLogPage=1;renderSysLogTabContent();" style="cursor:pointer;color:#c23d2e;margin-left:4px;">清除</span>`:''}
+                </div>
+                <div class="search-area"><input type="text" placeholder="搜索日志内容或用户..." oninput="filterSysOpLogs(this.value)" autocomplete="off"></div>
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>时间</th><th>操作用户</th><th>操作内容</th></tr></thead>
+                    <thead><tr><th style="width:50px;">类别</th><th>时间</th><th>操作用户</th><th>操作内容</th></tr></thead>
                     <tbody id="sysOpLogTbody"></tbody>
                 </table>
                 <div class="pagination" id="sysOpLogPage"></div>
@@ -6461,7 +6478,10 @@ function renderSysLogTabContent() {
         const logs = [...loadData('loginLogs')].reverse();
         container.innerHTML = `
             <div class="action-bar">
-                <div class="btn-group"><button class="btn btn-danger" onclick="clearLoginLogs()">清空日志</button></div>
+                <div class="btn-group">
+                    <button class="btn btn-danger" onclick="clearLoginLogs()">清空日志</button>
+                    <button class="btn btn-outline" onclick="exportLoginLogs()">导出日志</button>
+                </div>
                 <div class="search-area"><input type="text" placeholder="搜索用户名或IP..." oninput="filterSysLoginLogs(this.value)" autocomplete="off"></div>
             </div>
             <div class="table-wrap">
@@ -6475,22 +6495,41 @@ function renderSysLogTabContent() {
     }
 }
 let sysOpLogFilter = '', sysLoginLogFilter = '', sysOpLogPage = 1, sysLoginLogPage = 1;
+let sysOpLogDateFrom = '', sysOpLogDateTo = '';
 function filterSysOpLogs(term) { sysOpLogFilter = term; sysOpLogPage = 1; renderSysOpLogTable([...loadData('systemLogs')].reverse()); }
 function filterSysLoginLogs(term) { sysLoginLogFilter = term; sysLoginLogPage = 1; renderSysLoginLogTable([...loadData('loginLogs')].reverse()); }
+function applySysOpDateFilter() {
+    sysOpLogDateFrom = document.getElementById('sysOpDateFrom')?.value||'';
+    sysOpLogDateTo = document.getElementById('sysOpDateTo')?.value||'';
+    sysOpLogPage = 1;
+    renderSysOpLogTable([...loadData('systemLogs')].reverse());
+}
+function matchLogDate(logTime, from, to) {
+    if(!from&&!to) return true;
+    const lt = logTime||'';
+    const logDate = lt.slice(0,10);
+    if(from && logDate < from) return false;
+    if(to && logDate > to) return false;
+    return true;
+}
 function renderSysOpLogTable(logs) {
     let filtered = logs;
-    if (sysOpLogFilter) filtered = logs.filter(l => l.action.includes(sysOpLogFilter) || l.user.includes(sysOpLogFilter));
+    if (sysOpLogFilter) filtered = filtered.filter(l => l.action.includes(sysOpLogFilter) || l.user.includes(sysOpLogFilter));
+    if (sysOpLogDateFrom || sysOpLogDateTo) filtered = filtered.filter(l => matchLogDate(l.time, sysOpLogDateFrom, sysOpLogDateTo));
     const start = (sysOpLogPage - 1) * PAGE_SIZE;
     const pageData = filtered.slice(start, start + PAGE_SIZE);
     document.getElementById('sysOpLogTbody').innerHTML = pageData.length === 0
-        ? '<tr><td colspan="3" style="text-align:center;padding:40px;color:#819e73;">暂无数据</td></tr>'
-        : pageData.map(l => `<tr><td>${l.time}</td><td>${l.user}</td><td>${l.action}</td></tr>`).join('');
+        ? '<tr><td colspan="4" style="text-align:center;padding:40px;color:#819e73;">暂无数据</td></tr>'
+        : pageData.map(l => {
+            const cat = getLogCategory(l.action);
+            return `<tr><td>${cat.cls?`<span class="badge ${cat.cls}" style="font-size:0.65rem;">${cat.cat}</span>`:cat.cat}</td><td style="font-size:0.78rem;">${l.time}</td><td>${l.user}</td><td style="font-size:0.8rem;">${l.action}</td></tr>`;
+        }).join('');
     const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
     document.getElementById('sysOpLogPage').innerHTML = `<div>共 ${filtered.length} 条</div>` + Array.from({length: totalPages}, (_, i) => `<div class="page-btn ${i + 1 === sysOpLogPage ? 'active' : ''}" onclick="sysOpLogPage=${i + 1};renderSysOpLogTable([...loadData('systemLogs')].reverse())">${i + 1}</div>`).join('');
 }
 function renderSysLoginLogTable(logs) {
     let filtered = logs;
-    if (sysLoginLogFilter) filtered = logs.filter(l => l.username.includes(sysLoginLogFilter) || l.ip.includes(sysLoginLogFilter) || l.realName.includes(sysLoginLogFilter));
+    if (sysLoginLogFilter) filtered = filtered.filter(l => l.username.includes(sysLoginLogFilter) || l.ip.includes(sysLoginLogFilter) || l.realName.includes(sysLoginLogFilter));
     const start = (sysLoginLogPage - 1) * PAGE_SIZE;
     const pageData = filtered.slice(start, start + PAGE_SIZE);
     document.getElementById('sysLoginLogTbody').innerHTML = pageData.length === 0
@@ -6501,6 +6540,7 @@ function renderSysLoginLogTable(logs) {
 }
 function init_system_log_mgmt() {
     sysOpLogFilter = ''; sysLoginLogFilter = ''; sysOpLogPage = 1; sysLoginLogPage = 1;
+    sysOpLogDateFrom = ''; sysOpLogDateTo = '';
     refreshCurrentTable = () => { renderSysLogTabContent(); };
     renderSysLogTabContent();
 }
@@ -6549,13 +6589,25 @@ function renderSysBakTabContent() {
     const container = document.getElementById('sysBakTabContent');
     if (sysBakTab === 'backup') {
         const backups = JSON.parse(localStorage.getItem('sms_backupHistory')||'[]');
+        const overview = getDataOverview();
+        const hasSnapshot = !!localStorage.getItem('sms_latestSnapshot');
         container.innerHTML = `
+            <div class="content-card" style="margin-bottom:16px;">
+                <h3>📊 数据概览</h3>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px;">
+                    <div class="mini-stat"><div class="mini-icon">📋</div><div><div class="mini-val">${overview.totalRecords}</div><div class="mini-lbl">总记录数</div></div></div>
+                    <div class="mini-stat"><div class="mini-icon">💿</div><div><div class="mini-val">${overview.totalSize}KB</div><div class="mini-lbl">当前数据量</div></div></div>
+                    <div class="mini-stat"><div class="mini-icon">📦</div><div><div class="mini-val">${backups.length}</div><div class="mini-lbl">备份次数</div></div></div>
+                    <div class="mini-stat"><div class="mini-icon">${hasSnapshot?'✅':'⚠️'}</div><div><div class="mini-val" style="font-size:0.8rem;">${hasSnapshot?overview.snapshotSize+'KB':'无快照'}</div><div class="mini-lbl">本地快照</div></div></div>
+                </div>
+            </div>
             <div class="content-card">
                 <h3>🔧 备份操作</h3>
                 <div class="dashboard-grid">
-                    <div class="stat-card clickable" onclick="backupData()"><div class="stat-icon">💾</div><div class="stat-num" style="font-size:1rem;">立即备份</div><div class="stat-label">将所有数据导出为JSON文件</div></div>
-                    <div class="stat-card clickable" onclick="autoBackupData()"><div class="stat-icon">🕐</div><div class="stat-num" style="font-size:1rem;">自动备份</div><div class="stat-label">将数据保存到浏览器本地存储快照</div></div>
-                    <div class="stat-card clickable" onclick="document.getElementById('restoreFileInput').click()"><div class="stat-icon">📥</div><div class="stat-num" style="font-size:1rem;">恢复数据</div><div class="stat-label">从备份文件恢复数据</div><input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="restoreData(event)"></div>
+                    <div class="stat-card clickable" onclick="backupData()"><div class="stat-icon">💾</div><div class="stat-num" style="font-size:1rem;">立即备份</div><div class="stat-label">将所有数据导出为JSON文件下载</div></div>
+                    <div class="stat-card clickable" onclick="autoBackupData()"><div class="stat-icon">🕐</div><div class="stat-num" style="font-size:1rem;">创建快照</div><div class="stat-label">保存数据快照到浏览器本地存储</div></div>
+                    ${hasSnapshot ? `<div class="stat-card clickable" onclick="restoreFromSnapshot()"><div class="stat-icon">⏪</div><div class="stat-num" style="font-size:1rem;">恢复快照</div><div class="stat-label">从最近本地快照恢复数据</div></div>` : ''}
+                    <div class="stat-card clickable" onclick="document.getElementById('restoreFileInput').click()"><div class="stat-icon">📥</div><div class="stat-num" style="font-size:1rem;">导入恢复</div><div class="stat-label">从备份文件恢复数据</div><input type="file" id="restoreFileInput" accept=".json" style="display:none;" onchange="restoreData(event)"></div>
                     <div class="stat-card clickable" onclick="resetAllData()" style="border:1px solid #ebc76a;"><div class="stat-icon">🔄</div><div class="stat-num" style="font-size:1rem;color:#b87c1a;">重置系统</div><div class="stat-label" style="color:#b87c1a;">恢复所有默认数据（不可逆）</div></div>
                 </div>
             </div>
@@ -6564,9 +6616,9 @@ function renderSysBakTabContent() {
                 <div style="padding:16px 20px;display:flex;justify-content:space-between;align-items:center;"><h3 style="color:#1f3b2c;margin:0;">备份历史记录</h3><span style="font-size:0.75rem;color:#819e73;">共 ${backups.length} 条</span></div>
                 <table class="data-table">
                     <thead><tr><th>备份时间</th><th>备份类型</th><th>操作人</th><th>数据大小</th><th>操作</th></tr></thead>
-                    <tbody>${[...backups].reverse().slice(0,20).map(b=>`<tr><td>${b.time}</td><td>${b.type}</td><td>${b.operator}</td><td>${b.size}</td><td class="action-links"><span onclick="deleteBackupRecord('${b.id}')" style="cursor:pointer;color:#c23d2e;">删除</span></td></tr>`).join('')}</tbody>
+                    <tbody>${[...backups].reverse().slice(0,20).map(b=>`<tr><td>${b.time}</td><td><span class="badge ${b.type==='自动备份'?'badge-on':'badge'}">${b.type}</span></td><td>${b.operator}</td><td>${b.size}</td><td class="action-links"><span onclick="deleteBackupRecord('${b.id}')" style="color:#c23d2e;">删除</span></td></tr>`).join('')}</tbody>
                 </table>
-            </div>` : '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无备份历史记录</div><div style="font-size:0.75rem;margin-top:4px;color:#b0c4a8;">点击"立即备份"创建第一份备份</div></div>'}
+            </div>` : '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">暂无备份历史记录</div><div style="font-size:0.75rem;margin-top:4px;color:#b0c4a8;">点击"立即备份"或"创建快照"开始保护数据</div></div>'}
         `;
     } else {
         const configs = loadData('monitorConfigs');
@@ -7006,6 +7058,15 @@ function clearLoginLogs() {
     addLog('登录日志已清空');
     showToast('登录日志已清空');
 }
+function exportLoginLogs() {
+    const logs = loadData('loginLogs');
+    const blob = new Blob([JSON.stringify(logs, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `登录日志导出_${getToday()}.json`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('登录日志已导出');
+}
 
 // -- 数据备份与恢复 --
 pageRenderers['system_backup'] = function() {
@@ -7036,9 +7097,12 @@ function autoBackupData() {
 }
 function recordBackup(type, jsonStr) {
     const backups = JSON.parse(localStorage.getItem('sms_backupHistory')||'[]');
-    backups.push({ id: makeId(), time: new Date().toLocaleString(), type, operator: currentUser?.name||'系统', size: (jsonStr.length/1024).toFixed(1)+'KB' });
+    const snapshotId = makeId();
+    backups.push({ id: snapshotId, time: new Date().toLocaleString(), type, operator: currentUser?.name||'系统', size: (jsonStr.length/1024).toFixed(1)+'KB', hasSnapshot: true });
     if (backups.length > 20) backups.splice(0, backups.length - 20);
     localStorage.setItem('sms_backupHistory', JSON.stringify(backups));
+    // 存储最近一次快照数据用于本地恢复
+    try { localStorage.setItem('sms_latestSnapshot', jsonStr); } catch(e) { /* 数据过大 */ }
     if (currentPage === 'system_backup' || currentPage === 'system_backup_mgmt') { if (sysBakTab === 'backup') renderSysBakTabContent(); }
 }
 function deleteBackupRecord(id) {
@@ -7047,6 +7111,32 @@ function deleteBackupRecord(id) {
     localStorage.setItem('sms_backupHistory', JSON.stringify(backups));
     if (currentPage === 'system_backup_mgmt') { if (sysBakTab === 'backup') renderSysBakTabContent(); }
     showToast('备份记录已删除');
+}
+function restoreFromSnapshot() {
+    const snapshot = localStorage.getItem('sms_latestSnapshot');
+    if(!snapshot) { showToast('没有可用的本地快照，请先执行自动备份'); return; }
+    if(!confirm('将恢复到最近一次本地快照，当前未保存的数据将丢失。确定继续吗？')) return;
+    try {
+        const data = JSON.parse(snapshot);
+        Object.keys(data).forEach(k => { if(DEFAULT_DATA.hasOwnProperty(k)) saveData(k, data[k]); });
+        addLog('从本地快照恢复数据');
+        showToast('数据已从本地快照恢复，即将刷新...');
+        setTimeout(()=>location.reload(), 1500);
+    } catch(err) { alert('快照数据损坏，无法恢复'); }
+}
+function getDataOverview() {
+    const counts = {};
+    let totalRecords = 0;
+    Object.keys(DEFAULT_DATA).forEach(k => {
+        const d = loadData(k);
+        if(Array.isArray(d)) { counts[k] = d.length; totalRecords += d.length; }
+    });
+    const allData = {};
+    Object.keys(DEFAULT_DATA).forEach(k => { allData[k] = loadData(k); });
+    const totalSize = (JSON.stringify(allData).length/1024).toFixed(1);
+    const snapshot = localStorage.getItem('sms_latestSnapshot');
+    const snapshotSize = snapshot ? (snapshot.length/1024).toFixed(1) : null;
+    return { counts, totalRecords, totalSize, snapshotSize };
 }
 function restoreData(e) {
     const file = e.target.files[0];
@@ -7398,9 +7488,11 @@ pageRenderers['system_maintenance'] = function() {
                             <td>${r.operator}</td><td>${r.planDate}</td><td>${r.executeDate||'待定'}</td><td>${r.duration}</td>
                             <td><span class="badge ${r.status==='已完成'?'badge-on':r.status==='进行中'?'badge-warn':'badge-off'}">${r.status}</span></td>
                             <td class="action-links">
-                                <span onclick="viewMaintenance('${r.id}')">查看</span>
-                                <span onclick="editMaintenance('${r.id}')">编辑</span>
-                                ${r.status==='计划中'?`<span onclick="executeMaintenance('${r.id}')">执行</span>`:''}
+                                <span onclick="viewMaintenance(${r.id})">查看</span>
+                                <span onclick="editMaintenance(${r.id})">编辑</span>
+                                ${r.status==='计划中'?`<span onclick="executeMaintenance(${r.id})">执行</span>`:''}
+                                ${r.status==='已完成'&&!r.rollback?`<span onclick="rollbackMaintenance(${r.id})" style="color:#c23d2e;">回滚</span>`:''}
+                                <span onclick="deleteMaintenance(${r.id})" style="color:#c23d2e;">删除</span>
                             </td>
                         </tr>`).join('')}
                     </tbody>
@@ -7427,6 +7519,7 @@ function saveMaintenance() {
     showToast('维护记录已添加');
 }
 function viewMaintenance(rid) {
+    rid = parseInt(rid);
     const records = loadData('maintenanceRecords');
     const r = records.find(x=>x.id===rid); if(!r) return;
     openModal('维护记录详情 - '+r.version, `
@@ -7441,6 +7534,7 @@ function viewMaintenance(rid) {
         </div>`, `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
 }
 function editMaintenance(rid) {
+    rid = parseInt(rid);
     const records = loadData('maintenanceRecords');
     const r = records.find(x=>x.id===rid); if(!r) return;
     openModal('编辑维护记录 - '+r.version, `
@@ -7448,9 +7542,10 @@ function editMaintenance(rid) {
         <div class="form-field"><label>更新内容</label><textarea id="frmMtContent" rows="3">${r.content}</textarea></div>
         <div class="form-row"><div class="form-field"><label>计划日期</label><input type="date" id="frmMtPlanDate" value="${r.planDate}"></div><div class="form-field"><label>耗时</label><input id="frmMtDuration" value="${r.duration}"></div></div>
         <div class="form-row"><div class="form-field"><label>状态</label><select id="frmMtStatus"><option value="计划中" ${r.status==='计划中'?'selected':''}>计划中</option><option value="进行中" ${r.status==='进行中'?'selected':''}>进行中</option><option value="已完成" ${r.status==='已完成'?'selected':''}>已完成</option></select></div><div class="form-field"><label>执行结果</label><input id="frmMtResult" value="${r.result||''}"></div></div>`,
-        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doEditMaintenance('${r.id}')">保存</button>`);
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doEditMaintenance(${r.id})">保存</button>`);
 }
 function doEditMaintenance(rid) {
+    rid = parseInt(rid);
     const records = loadData('maintenanceRecords');
     const r = records.find(x=>x.id===rid); if(!r) return;
     r.version = document.getElementById('frmMtVersion').value.trim();
@@ -7466,16 +7561,56 @@ function doEditMaintenance(rid) {
     showToast('维护记录已更新');
 }
 function executeMaintenance(rid) {
-    if(!confirm('确定标记此维护记录为"已完成"吗？')) return;
+    rid = parseInt(rid);
+    const records = loadData('maintenanceRecords');
+    const r = records.find(x=>x.id===rid); if(!r) return;
+    openModal('执行维护 - '+r.version, `
+        <div class="form-field"><label>执行结果</label><textarea id="frmMtExecResult" rows="3" placeholder="请描述执行结果...">更新成功，系统运行正常</textarea></div>
+        <div class="form-row"><div class="form-field"><label>执行耗时</label><input id="frmMtExecDuration" value="${r.duration}"></div><div class="form-field"><label>是否需要回滚</label><select id="frmMtRollback"><option value="false">否</option><option value="true">是</option></select></div></div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doExecuteMaintenance(${r.id})">确认执行</button>`);
+}
+function doExecuteMaintenance(rid) {
+    rid = parseInt(rid);
     const records = loadData('maintenanceRecords');
     const r = records.find(x=>x.id===rid); if(!r) return;
     r.status = '已完成';
     r.executeDate = new Date().toLocaleString();
-    r.result = '更新成功，系统运行正常';
+    r.result = document.getElementById('frmMtExecResult').value;
+    r.duration = document.getElementById('frmMtExecDuration').value;
+    r.rollback = document.getElementById('frmMtRollback').value === 'true';
+    saveData('maintenanceRecords', records);
+    closeModal(); navigateTo('system_maintenance');
+    addLog(`执行系统维护: ${r.version}${r.rollback?' (已回滚)':''}`);
+    showToast(r.rollback ? '维护已执行并标记回滚' : '维护记录已更新为已完成');
+}
+function deleteMaintenance(rid) {
+    rid = parseInt(rid);
+    if(!confirm('确定删除此维护记录吗？此操作不可恢复。')) return;
+    const records = loadData('maintenanceRecords');
+    const idx = records.findIndex(x=>x.id===rid);
+    if(idx===-1) return;
+    const r = records[idx];
+    records.splice(idx, 1);
     saveData('maintenanceRecords', records);
     navigateTo('system_maintenance');
-    addLog(`执行系统维护: ${r.version}`);
-    showToast('维护记录已更新为已完成');
+    addLog(`删除维护记录: ${r.version}`);
+    showToast('维护记录已删除');
+}
+function rollbackMaintenance(rid) {
+    rid = parseInt(rid);
+    if(!confirm('确定将此维护记录标记为已回滚吗？')) return;
+    const records = loadData('maintenanceRecords');
+    const r = records.find(x=>x.id===rid); if(!r) return;
+    r.rollback = true;
+    r.status = '已完成';
+    r.result = (r.result||'') + ' [已回滚]';
+    saveData('maintenanceRecords', records);
+    navigateTo('system_maintenance');
+    addLog(`回滚维护记录: ${r.version}`);
+    showToast('维护记录已标记为回滚');
+}
+function init_system_maintenance() {
+    refreshCurrentTable = () => { try { renderPage('system_maintenance'); } catch(e) {} };
 }
 
 // ==================== 日志 ====================
