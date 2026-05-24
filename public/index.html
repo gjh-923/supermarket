@@ -676,7 +676,7 @@ const ROLES = {
     member_admin: { name: '会员管理员', pages: ['dashboard','member','member_level','member_points','member_exchange'] },
     cashier: { name: '收银员', pages: ['dashboard','sales','sales_order','sales_stats','sales_ranking','member','member_points'] },
     purchaser: { name: '采购员', pages: ['dashboard','purchase_in','supplier','supplier_contract','supplier_evaluation','inventory'] },
-    warehouse: { name: '仓管员', pages: ['dashboard','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','inventory'] },
+    warehouse: { name: '仓管员', pages: ['dashboard','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones'] },
     inventory: { name: '库存管理员', pages: ['dashboard','inventory','warehouse','inventory_check','inventory_alert','shelve','inventory_writeoff','warehouse_zones','purchase_in'] },
     finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax'] },
 };
@@ -844,7 +844,7 @@ const DEFAULT_DATA = {
         { id:1, name:'收银员', permissions:'sales,sales_order,member,member_points' },
         { id:2, name:'理货员', permissions:'inventory,shelve' },
         { id:3, name:'采购员', permissions:'purchase_in,supplier,supplier_contract,supplier_evaluation' },
-        { id:4, name:'仓管员', permissions:'warehouse,inventory,inventory_writeoff,inventory_check,inventory_alert' },
+        { id:4, name:'仓管员', permissions:'warehouse,inventory_writeoff,inventory_check,inventory_alert' },
         { id:5, name:'财务', permissions:'finance,finance_report,finance_profit,finance_balance,finance_cashflow,finance_cost,finance_budget,finance_tax,finance_ledger' },
         { id:6, name:'店长', permissions:'all' }
     ],
