@@ -1246,7 +1246,7 @@ function canAccess(page) {
     const rolePages = ROLES[currentUser.role]?.pages || [];
     return rolePages.includes(page);
 }
-function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; return true; }
+function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; if (currentUser.role === 'product_admin') { var warehousePages = ['warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones']; if (warehousePages.indexOf(currentPage) !== -1) return false; } return true; }
 
 async function navigateTo(page) {
     if (!canAccess(page)) {
@@ -1948,8 +1948,8 @@ function renderCatTreeView(tree) {
         html += `<td style="white-space:nowrap;">`;
         html += `<button class="btn btn-sm btn-outline" onclick="editCategory(${c.id})" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button>`;
         html += `<button class="btn btn-sm btn-outline" onclick="addSubCategory(${c.id})" title="在此分类下新增子分类" style="font-size:0.7rem;padding:3px 8px;">＋子分类</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(${c.id})" title="上移" style="font-size:0.7rem;padding:3px 6px;">↑</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(${c.id})" title="下移" style="font-size:0.7rem;padding:3px 6px;">↓</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(${c.id})" title="上移" style="font-size:0.7rem;padding:3px 8px;">上移</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(${c.id})" title="下移" style="font-size:0.7rem;padding:3px 8px;">下移</button>`;
         html += `<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(${c.id})" title="${c.status==='显示'?'点击隐藏':'点击显示'}" style="font-size:0.7rem;padding:3px 8px;">${c.status==='显示'?'隐藏':'显示'}</button>`;
         html += `<button class="btn btn-sm btn-outline" onclick="deleteCategory(${c.id})" title="删除此分类" style="font-size:0.7rem;padding:3px 8px;color:#c23d2e;">删除</button>`;
         html += `</td></tr>`;
@@ -2219,7 +2219,8 @@ function moveCategoryUp(catId) {
     var cat = cats.find(function(c) { return String(c.id) === String(catId); });
     if (!cat) return;
     var siblings = cats.filter(function(c) { return c.parentId === cat.parentId; }).sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
-    var idx = siblings.findIndex(function(c) { return String(c.id) === String(catId); });
+    var idx = -1;
+    for (var si = 0; si < siblings.length; si++) { if (String(siblings[si].id) === String(catId)) { idx = si; break; } }
     if (idx <= 0) return;
     var prev = siblings[idx - 1];
     var tmp = cat.sortOrder;
@@ -2235,7 +2236,8 @@ function moveCategoryDown(catId) {
     var cat = cats.find(function(c) { return String(c.id) === String(catId); });
     if (!cat) return;
     var siblings = cats.filter(function(c) { return c.parentId === cat.parentId; }).sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
-    var idx = siblings.findIndex(function(c) { return String(c.id) === String(catId); });
+    var idx = -1;
+    for (var si = 0; si < siblings.length; si++) { if (String(siblings[si].id) === String(catId)) { idx = si; break; } }
     if (idx < 0 || idx >= siblings.length - 1) return;
     var next = siblings[idx + 1];
     var tmp = cat.sortOrder;
@@ -4520,6 +4522,7 @@ function init_shelve() {
     refreshCurrentTable();
 }
 function doShelve(p) {
+    if (!canEdit()) { showToast('只读权限，无法操作上架'); return; }
     if(p.status==='上架') { showToast('该商品已上架'); return; }
     const products = loadData('products');
     const prod = products.find(x=>x.id===p.id);
@@ -4530,6 +4533,7 @@ function doShelve(p) {
     showToast(`"${p.name}" 已上架`);
 }
 function doUnshelve(p) {
+    if (!canEdit()) { showToast('只读权限，无法操作下架'); return; }
     if(p.status==='下架') { showToast('该商品已下架'); return; }
     const products = loadData('products');
     const prod = products.find(x=>x.id===p.id);
@@ -4566,6 +4570,7 @@ function init_inventory_writeoff() {
     refreshCurrentTable();
 }
 function writeOff(p) {
+    if (!canEdit()) { showToast('只读权限，无法核销'); return; }
     openModal('库存核销 - '+p.name, `
         <p>当前库存: <strong>${p.stock}</strong> | 到期日期: ${p.expiryDate}</p>
         <div class="form-field"><label>核销数量</label><input type="number" id="frmWoQty" min="1" max="${p.stock}" value="${p.stock}"></div>
@@ -4592,11 +4597,12 @@ function doWriteOff(pid) {
 // -- 库存盘点 --
 pageRenderers['inventory_check'] = function() {
     const tasks = loadData('inventoryCheckTasks');
+    var createBtn = canEdit() ? `<button class="btn btn-primary" onclick="createCheckTask()">新建盘点任务</button>` : '';
     return renderTablePage('库存盘点', '仓库管理 / 盘点管理',
         ['盘点单号','盘点日期','盘点范围','状态','盘点人','备注'],
         tasks,
         [{label:'详情',action:viewCheckTask},...(canEdit()?[{label:'执行',action:executeCheck}]:[])],
-        `<button class="btn btn-primary" onclick="createCheckTask()">新建盘点任务</button><button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('warehouse')}>🏭 仓库概览</button><button class="btn btn-outline" ${btnLink('inventory_check')}>刷新</button>`,
+        createBtn + `<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('warehouse')}>🏭 仓库概览</button><button class="btn btn-outline" ${btnLink('inventory_check')}>刷新</button>`,
         '搜索盘点单号'
     );
 };
@@ -4620,6 +4626,7 @@ function createCheckTask() {
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCheckTask()">创建</button>`);
 }
 function saveCheckTask() {
+    if (!canEdit()) { showToast('只读权限，无法创建盘点任务'); return; }
     const tasks = loadData('inventoryCheckTasks');
     const task = {
         id: makeId(),
@@ -4640,6 +4647,7 @@ function saveCheckTask() {
     showToast('盘点任务已创建: '+task.taskNo);
 }
 function executeCheck(t) {
+    if (!canEdit()) { showToast('只读权限，无法执行盘点'); return; }
     if(t.status==='已完成') { showToast('该任务已完成'); return; }
     const products = loadData('products');
     const filteredProducts = t.scope==='全库' ? products : products;
@@ -4671,6 +4679,7 @@ function executeCheck(t) {
         `<button class="btn btn-outline" onclick="closeModal()">暂存</button><button class="btn btn-primary" onclick="submitCheckResult('${t.id}')">提交盘点结果</button>`);
 }
 function submitCheckResult(taskId) {
+    if (!canEdit()) { showToast('只读权限，无法提交盘点结果'); return; }
     const tasks = loadData('inventoryCheckTasks');
     const task = tasks.find(x=>x.id===taskId);
     if(!task) return;
@@ -4736,7 +4745,7 @@ pageRenderers['inventory_alert'] = function() {
             <div class="dashboard-grid" id="alertStats"></div>
             ${renderTablePageContent('预警商品列表', ['商品名称','分类','当前库存','预警类型','预警阈值','预警信息'],
                 alerts, (canEdit()?[{label:'处理',action:handleAlert}]:[]),
-                `<button class="btn btn-primary" onclick="manageAlertSettings()">预警设置</button><button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('inventory_check')}>🔍 库存盘点</button><button class="btn btn-outline" ${btnLink('inventory_alert')}>刷新</button>`)}
+                `${canEdit() ? '<button class="btn btn-primary" onclick="manageAlertSettings()">预警设置</button>' : ''}<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('inventory_check')}>🔍 库存盘点</button><button class="btn btn-outline" ${btnLink('inventory_alert')}>刷新</button>`)}
         </div>
     </div>`;
 };
@@ -4787,11 +4796,13 @@ function init_inventory_alert() {
     refreshCurrentTable();
 }
 function handleAlert(a) {
+    if (!canEdit()) { viewProduct(a); return; }
     // 仅查看商品详情，出/入库操作通过采购订单和销售收银完成
     if(a.alertType==='临期预警' && a.expiryDate) { writeOff(a); }
     else { viewProduct(a); }
 }
 function manageAlertSettings() {
+    if (!canEdit()) { showToast('只读权限，无法修改预警设置'); return; }
     const settings = loadData('inventoryAlertSettings');
     const cats = loadData('categories');
     let html = `<table class="data-table" style="min-width:500px;"><thead><tr><th>适用分类</th><th>最低库存</th><th>最高库存</th><th>临期天数</th><th>启用</th><th>操作</th></tr></thead><tbody>`;
@@ -4853,18 +4864,20 @@ function deleteAlertSetting(id) {
 // -- 仓库区域管理 --
 pageRenderers['warehouse_zones'] = function() {
     const zones = loadData('warehouseZones');
+    var actions = canEdit() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [];
+    var addBtn = canEdit() ? `<button class="btn btn-primary" onclick="addZone()">新增区域</button>` : '';
     return renderTablePage('仓库区域管理', '仓库管理 / 区域管理',
         ['区域名称','位置','容量','当前库存量','使用率','负责人','状态'],
         zones,
-        [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}],
-        `<button class="btn btn-primary" onclick="addZone()">新增区域</button>`,
+        actions,
+        addBtn + `<button class="btn btn-outline" onclick="navigateTo('warehouse_zones')">刷新</button>`,
         '搜索区域名称'
     );
 };
 function init_warehouse_zones() {
     refreshCurrentTable = () => renderTableData(loadData('warehouseZones'),
         [{key:'name'},{key:'location'},{key:'capacity'},{key:'current'},{key:'capacity',render:z=>Math.round(z.current/z.capacity*100)+'%'},{key:'manager'},{key:'status',render:z=>`<span class="badge ${z.status==='使用中'?'badge-on':'badge-off'}">${z.status}</span>`}],
-        [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}],
+        canEdit() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [],
         (item,term)=>item.name.includes(term)||item.location.includes(term)
     );
     refreshCurrentTable();
@@ -4885,6 +4898,7 @@ function editZone(z) {
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveZone()">保存</button>`);
 }
 function saveZone() {
+    if (!canEdit()) { showToast('只读权限，无法修改仓库区域'); return; }
     const zones = loadData('warehouseZones');
     const id = document.getElementById('frmZoneId')?.value;
     const data = {
@@ -4906,6 +4920,7 @@ function saveZone() {
     showToast('区域信息已保存');
 }
 function deleteZone(z) {
+    if (!canEdit()) { showToast('只读权限，无法删除仓库区域'); return; }
     if(!confirm(`确定删除区域"${z.name}"吗？`)) return;
     let zones = loadData('warehouseZones');
     zones = zones.filter(x=>x.id!==z.id);
