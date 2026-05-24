@@ -464,7 +464,6 @@ async function _apiSyncAll() {
         // 同步后立即修复数据一致性
         try { deduplicateCategories(); } catch(e) {}
         try { syncProductCategories(); } catch(e) {}
-        try { recalcAllMemberStats(); } catch(e) {}
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
 }
@@ -1192,8 +1191,7 @@ function migrateData() {
     if (membersChanged) saveData('members', members);
     // 去重：移除卡号/手机号重复的会员记录
     deduplicateMembers();
-    // 数据修复：从订单重建所有会员的 totalSpent、lastConsumeDate、cumulativePoints（独立加载保存，不会被覆盖）
-    recalcAllMemberStats();
+
     // 迁移旧格式分类（字符串数组 → 对象数组）
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') {
