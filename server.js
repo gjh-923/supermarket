@@ -1610,6 +1610,31 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
       } catch(e) { /* merge failed, use client data as-is */ }
     }
 
+    // Deduplicate salaries by (employee_id, salary_month)
+    if (storeKey === 'salaries' && merged.length > 0) {
+      const seen = new Map();
+      const deduped = [];
+      merged.forEach(s => {
+        const empId = s.employee_id || s.employeeId || '';
+        const month = s.salary_month || s.salaryMonth || '';
+        const uk = empId + '||' + month;
+        const existing = seen.get(uk);
+        if (!existing) {
+          seen.set(uk, s);
+          deduped.push(s);
+        } else {
+          const sTime = s.created_at || s.createdAt || '';
+          const eTime = existing.created_at || existing.createdAt || '';
+          if (sTime > eTime) {
+            const idx = deduped.indexOf(existing);
+            if (idx !== -1) deduped[idx] = s;
+            seen.set(uk, s);
+          }
+        }
+      });
+      merged = deduped;
+    }
+
     db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)')
       .run(storeKey, JSON.stringify(merged));
 
