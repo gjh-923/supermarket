@@ -998,6 +998,8 @@ function migrateData() {
         if (!('cumulativePoints' in m)) { m.cumulativePoints = m.points || 0; membersChanged = true; }
     });
     if (membersChanged) saveData('members', members);
+    // 去重：移除卡号/手机号重复的会员记录
+    deduplicateMembers();
 
     // 迁移供应商数据：补充缺失字段
     let suppliers = loadData('suppliers');
@@ -2665,7 +2667,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
         couponDiscount: actualCouponDiscount, bundleDiscount,
         memberId: posMember?.id||null, memberName: posMember?.name||'',
         time: getNow(), cashier: getCashierName(),
-        paymentMethod: payMethod
+        paymentMethod: payMethod, status: '已完成'
     });
     saveData('salesOrders', orders);
     // 记录财务流水（收入）
@@ -2694,27 +2696,32 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
         const members = loadData('members');
         const m = members.find(x=>x.id===posMember.id);
         if (m) {
-            m.totalSpent = (m.totalSpent||0) + finalAmount;
+            const isFrozen = m.status === '冻结';
             m.lastConsumeDate = getToday();
-            const lvl = loadData('memberLevels').find(l=>l.name===m.level);
-            const rate = lvl ? lvl.pointsRate : 1;
-            const earnedPoints = Math.floor(finalAmount * rate);
-            m.points = (m.points||0) + earnedPoints;
-            m.cumulativePoints = (m.cumulativePoints||0) + earnedPoints;
-            const levels = loadData('memberLevels');
-            levels.sort((a,b)=>b.minSpent-a.minSpent);
-            const newLevel = levels.find(l=>m.totalSpent >= l.minSpent);
-            const oldLevel = m.level;
-            if (newLevel && newLevel.name !== oldLevel) {
-                m.level = newLevel.name;
-                showToast(`会员升级！${oldLevel} → ${newLevel.name}`);
+            if (isFrozen) {
+                showToast('该会员已被冻结，积分和消费金额不更新');
+            } else {
+                m.totalSpent = (m.totalSpent||0) + finalAmount;
+                const lvl = loadData('memberLevels').find(l=>l.name===m.level);
+                const rate = lvl ? lvl.pointsRate : 1;
+                const earnedPoints = Math.floor(finalAmount * rate);
+                m.points = (m.points||0) + earnedPoints;
+                m.cumulativePoints = (m.cumulativePoints||0) + earnedPoints;
+                const levels = loadData('memberLevels');
+                levels.sort((a,b)=>b.minSpent-a.minSpent);
+                const newLevel = levels.find(l=>m.totalSpent >= l.minSpent);
+                const oldLevel = m.level;
+                if (newLevel && newLevel.name !== oldLevel) {
+                    m.level = newLevel.name;
+                    showToast(`会员升级！${oldLevel} → ${newLevel.name}`);
+                }
+                saveData('members', members);
+                const records = loadData('memberPointsRecords');
+                records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:`消费¥${formatMoney(finalAmount)}奖励${earnedPoints}积分`});
+                saveData('memberPointsRecords', records);
+                addLog(`会员消费: ${m.name} ¥${formatMoney(finalAmount)}, +${earnedPoints}积分, 累计¥${formatMoney(m.totalSpent)}`);
             }
             saveData('members', members);
-            const records = loadData('memberPointsRecords');
-            records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:`消费¥${formatMoney(finalAmount)}奖励${earnedPoints}积分`});
-            saveData('memberPointsRecords', records);
-            addLog(`会员消费: ${m.name} ¥${formatMoney(finalAmount)}, +${earnedPoints}积分, 累计¥${formatMoney(m.totalSpent)}`);
-        }
     }
     showToast(`结算成功！金额: ¥${formatMoney(finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
     posCart = [];
@@ -3046,6 +3053,7 @@ pageRenderers['member'] = function() {
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statMemActive" style="color:#2a7a3b;">-</div><div class="stat-label">正常会员</div></div>
                 <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-num" id="statMemNew">-</div><div class="stat-label">本月新增</div></div>
                 <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statMemPoints">-</div><div class="stat-label">现有积分池</div></div>
+                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" id="statMemCumPts" style="color:#b87c1a;">-</div><div class="stat-label">累计积分总计</div></div>
                 <div class="stat-card"><div class="stat-icon">❄️</div><div class="stat-num" id="statMemFrozen" style="color:#bc5a4a;">-</div><div class="stat-label">冻结会员</div></div>
             </div>
             <div class="action-bar">
@@ -3065,7 +3073,7 @@ ${currentUser.role!=="cashier"?`                    <button class="btn btn-outli
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>现有积分</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
+                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>注册日期</th><th>累计消费</th><th>累计积分</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -3083,10 +3091,12 @@ function updateMemberStats() {
     const frozen = members.filter(m=>m.status==='冻结').length;
     const newThis = members.filter(m=>m.joinDate&&m.joinDate.startsWith(thisMonth)).length;
     const totalPts = members.reduce((s,m)=>s+(m.points||0),0);
+    const totalCumPts = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
     document.getElementById('statMemTotal').textContent = members.length;
     document.getElementById('statMemActive').textContent = active;
     document.getElementById('statMemNew').textContent = newThis;
     document.getElementById('statMemPoints').textContent = totalPts;
+    document.getElementById('statMemCumPts').textContent = totalCumPts;
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
@@ -3103,9 +3113,9 @@ function init_member() {
                  const color = lvl?lvl.cardColor:'#9e9e9e';
                  return `<span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}44;">${m.level}</span>`;
              }},
-             {key:'points',render:m=>`<span style="font-weight:600;color:#2b6e3c;">${m.points||0}</span>`},
              {key:'joinDate'},
              {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)},
+             {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
              {key:'status',render:m=>`<span class="badge ${(m.status||'正常')==='正常'?'badge-on':'badge-off'}">${m.status||'正常'}</span>`},
              {key:'lastConsumeDate',render:m=>m.lastConsumeDate||'-'}],
             (currentUser.role==='cashier'?[{label:'详情',action:viewMember},{label:'消费记录',action:viewMemberConsumption}]:[{label:'详情',action:viewMember},{label:'编辑',action:editMember},
@@ -3159,16 +3169,19 @@ function viewMemberConsumption(m) {
     bodyHtml += '<div style="font-size:1.5rem;font-weight:700;color:#b87c1a;">¥'+formatMoney(avgAmount)+'</div>';
     bodyHtml += '<div style="font-size:0.7rem;color:#6d8f6a;">平均消费</div></div></div>';
     if (orders.length > 0) {
-        bodyHtml += '<table class="data-table" style="min-width:500px;"><thead><tr><th>订单号</th><th>时间</th><th>商品</th><th>原价</th><th>折扣</th><th>实付</th><th>收银员</th></tr></thead><tbody>';
+        bodyHtml += '<table class="data-table" style="min-width:550px;"><thead><tr><th>订单号</th><th>时间</th><th>商品</th><th>原价</th><th>折扣</th><th>实付</th><th>收银员</th><th>状态</th></tr></thead><tbody>';
         for (var i = 0; i < orders.length; i++) {
             var o = orders[i];
             var items = (o.items||[]).map(function(it){return it.name+'x'+it.qty;}).join(', ');
             var discountHtml = (o.discountRate||100)<100 ? '<span class="badge badge-warn">'+o.discountRate+'折</span>' : '-';
+            var orderStatus = o.status || '已完成';
+            var statusColor = orderStatus==='已完成'?'#2a7a3b':orderStatus==='退货'?'#c23d2e':'#b87c1a';
             bodyHtml += '<tr><td>'+o.orderNo+'</td><td>'+o.time+'</td><td>'+items+'</td>';
             bodyHtml += '<td>¥'+formatMoney(o.originalAmount||o.totalAmount)+'</td>';
             bodyHtml += '<td>'+discountHtml+'</td>';
             bodyHtml += '<td style="font-weight:600;color:#2a7a3b;">¥'+formatMoney(o.totalAmount)+'</td>';
-            bodyHtml += '<td>'+(o.cashier||'')+'</td></tr>';
+            bodyHtml += '<td>'+(o.cashier||'')+'</td>';
+            bodyHtml += '<td><span style="color:'+statusColor+';font-weight:600;">'+orderStatus+'</span></td></tr>';
         }
         bodyHtml += '</tbody></table>';
     } else {
@@ -3210,10 +3223,14 @@ function saveMember() {
     if(!name||!phone) { alert('姓名和手机号不能为空'); return; }
     const isNew = !id;
     const cardNo = document.getElementById('frmMemCardNo').value.trim();
+    // 唯一性校验：卡号
     if (cardNo) {
         const dup = members.find(m => m.cardNo === cardNo && (!id || m.id !== parseInt(id)));
         if (dup) { alert(`会员卡号"${cardNo}"已被"${dup.name}"使用，请使用其他卡号。`); return; }
     }
+    // 唯一性校验：手机号
+    const dupPhone = members.find(m => m.phone === phone && (!id || m.id !== parseInt(id)));
+    if (dupPhone) { alert(`手机号"${phone}"已被"${dupPhone.name}"使用，请勿重复录入。`); return; }
     const data = {
         id: id ? parseInt(id) : (members.length?Math.max(...members.map(m=>m.id))+1:1),
         cardNo,
@@ -3290,6 +3307,39 @@ function deleteMember(m) {
     refreshCurrentTable();
     addLog(`删除会员: ${m.name}(${m.cardNo})`);
     showToast('已删除');
+}
+function deduplicateMembers() {
+    const members = loadData('members');
+    if (members.length < 2) return 0;
+    let removed = 0;
+    // 去重策略：按卡号+手机号保留ID最小的一条
+    const seen = new Map(); // key -> member
+    const toKeep = [];
+    members.forEach(m => {
+        const key1 = (m.cardNo || '').trim();
+        const key2 = (m.phone || '').trim();
+        const ck = key1 || key2;
+        if (!ck) { toKeep.push(m); return; }
+        if (seen.has(ck)) {
+            const existing = seen.get(ck);
+            if ((m.id || 0) < (existing.id || 0)) {
+                // 当前记录更早，替换保留
+                toKeep.splice(toKeep.indexOf(existing), 1);
+                toKeep.push(m);
+                seen.set(ck, m);
+            }
+            removed++;
+        } else {
+            seen.set(ck, m);
+            toKeep.push(m);
+        }
+    });
+    if (removed > 0) {
+        saveData('members', toKeep);
+        addLog(`会员去重: 移除 ${removed} 条重复记录`);
+        console.log(`会员去重: 移除 ${removed} 条重复记录, 剩余 ${toKeep.length} 条`);
+    }
+    return removed;
 }
 function exportMembers() {
     const members = loadData('members');
@@ -3507,7 +3557,11 @@ function init_member_points() {
          {key:'points',render:m=>`<span style="font-weight:600;color:${m.points>0?'#2b6e3c':'#819e73'};">${m.points||0}</span>`},
          {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
          {key:'totalSpent',render:m=>`<span style="font-weight:600;color:#1f3b2c;">¥${formatMoney(m.totalSpent)}</span>`}],
-        (currentUser.role==='cashier'?[{label:'流水',action:viewMemberPoints}]:[{label:'积分调整',action:adjustPoints},{label:'积分兑换',action:exchangePoints},{label:'清零',action:clearMemberPoints},{label:'流水',action:viewMemberPoints}]),
+        (currentUser.role==='cashier'?[{label:'流水',action:viewMemberPoints}]:[
+            {label:'积分调整',action:m=>{if(m.status==='冻结'){alert('冻结状态的会员无法进行积分调整');return;}adjustPoints(m);}},
+            {label:'积分兑换',action:m=>{if(m.status==='冻结'){alert('冻结状态的会员无法进行积分兑换');return;}exchangePoints(m);}},
+            {label:'清零',action:m=>{if(m.status==='冻结'){alert('冻结状态的会员无法进行积分清零');return;}if(!confirm(`确定将"${m.name}"的积分清零吗？`))return;clearMemberPoints(m);}},
+            {label:'流水',action:viewMemberPoints}]),
         (item,term)=>item.name.includes(term)||item.phone.includes(term)
     );
     refreshCurrentTable();
@@ -3540,6 +3594,8 @@ function doBatchAddPoints() {
     const members = loadData('members');
     const m = members.find(x=>x.id===mid);
     if(!m) return;
+    if(!confirm(`确定向"${m.name}"赠送 ${pts} 积分吗？\n备注: ${note||'无'}`)) return;
+    if(m.status==='冻结') { alert('冻结状态的会员无法赠送积分'); return; }
     m.points += pts;
     m.cumulativePoints = (m.cumulativePoints||0) + pts;
     saveData('members', members);
@@ -3565,7 +3621,9 @@ function doAdjustPoints(mid) {
     const members = loadData('members');
     const m = members.find(x=>x.id===mid);
     if(!m) return;
+    if(m.status==='冻结') { alert('冻结状态的会员无法调整积分'); return; }
     if(m.points + adj < 0) { alert('积分不足，调整后不能为负数'); return; }
+    if(!confirm(`确定${adj>0?'增加':'减少'} "${m.name}" ${Math.abs(adj)} 积分吗？`)) return;
     m.points += adj;
     if (adj > 0) m.cumulativePoints = (m.cumulativePoints||0) + adj;
     saveData('members', members);
@@ -3578,6 +3636,11 @@ function doAdjustPoints(mid) {
     showToast(`积分调整成功，${m.name} 当前积分: ${m.points}`);
 }
 function exchangePoints(m) {
+    // 等级权限控制：青铜会员不支持积分兑换
+    if (m.level === '青铜会员') {
+        alert('青铜会员暂不支持积分兑换功能，请升级至白银及以上等级。');
+        return;
+    }
     const exchangeOptions = loadData('exchangeRewards').filter(r=>r.enabled!==false).map(r=>({points:r.points, reward:r.name, type:r.type, rewardId:r.id}));
     const optionsHtml = exchangeOptions.filter(o=>m.points>=o.points).map(o=>`<option value="${o.points}" data-type="${o.type||'coupon'}" data-pid="${o.productId||''}" data-pname="${o.productName||''}">${o.reward} (需${o.points}积分)</option>`).join('');
     openModal('积分兑换 - '+m.name, `
@@ -3653,6 +3716,7 @@ function batchClearPoints() {
 function doBatchClearPoints() {
     const selected = [...document.querySelectorAll('.clear-mem-cb:checked')].map(cb=>parseInt(cb.value));
     if(selected.length===0) { alert('请选择至少一个会员'); return; }
+    if(!confirm(`确定清零选中的 ${selected.length} 名会员的全部积分吗？\n此操作不可恢复！`)) return;
     const members = loadData('members');
     const records = loadData('memberPointsRecords');
     let totalCleared = 0;
