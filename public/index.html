@@ -5247,7 +5247,7 @@ pageRenderers['employee_schedule'] = function() {
             <td><span class="shift-tag shift-晚班">晚</span> <b>${counts['晚班']}</b></td>
             <td><span class="shift-tag shift-休息">休</span> <b>${counts['休息']}</b></td>
             <td style="min-width:100px;"><div style="display:flex;align-items:center;gap:4px;"><div style="flex:1;height:6px;background:#f0f4eb;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${progressPct}%;background:${progressColor};border-radius:3px;"></div></div><span style="font-size:0.7rem;color:${progressColor};font-weight:600;">${progressPct}%</span></div></td>
-            <td><button class="btn btn-outline sch-detail-btn" style="font-size:0.7rem;padding:4px 12px;cursor:pointer;" data-eid="${emp.id}">详情</button></td>
+            <td><button class="btn btn-outline" style="font-size:0.7rem;padding:4px 12px;cursor:pointer;" data-eid="${emp.id}" data-ename="${(emp.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="var b=this;event.stopPropagation();viewEmpSchedule(b.getAttribute('data-eid'),b.getAttribute('data-ename'))">详情</button></td>
         </tr>`;
     }).join('');
 
@@ -5288,19 +5288,8 @@ pageRenderers['employee_schedule'] = function() {
         </div>
     </div>`;
 };
-function _onSchDetailClick(e) {
-    const btn = e.target.closest('.sch-detail-btn');
-    if (!btn) return;
-    e.stopPropagation();
-    const empId = btn.dataset.eid;
-    const employees = loadData('employees');
-    const emp = employees.find(em => String(em.id) === String(empId));
-    viewEmpSchedule(empId, emp ? emp.name : '未知');
-}
 function init_employee_schedule() {
     refreshCurrentTable = () => { try { renderPage('employee_schedule'); } catch(e) {} };
-    document.removeEventListener('click', _onSchDetailClick);
-    document.addEventListener('click', _onSchDetailClick);
 }
 function changeScheduleMonth(delta) {
     scheduleMonth += delta;
