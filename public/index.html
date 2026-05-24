@@ -238,9 +238,13 @@
         .sys-card .sys-card-desc { font-size: 0.7rem; color: #819e73; line-height: 1.5; }
         /* ========== 标签页切换栏 ========== */
         .tab-bar { display:flex; gap:0; background:#f0f4eb; border-radius:14px; padding:5px; margin-bottom:16px; }
-        .tab-btn { flex:1; text-align:center; padding:11px 20px; border-radius:11px; cursor:pointer; font-size:0.84rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.25s ease; user-select:none; }
+        .tab-btn { flex:1; text-align:center; padding:11px 20px; border-radius:11px; cursor:pointer; font-size:0.84rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.15s ease; user-select:none; }
         .tab-btn.active { color:#1f3b2c; background:white; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
         .tab-btn:hover:not(.active) { color:#426b39; background:rgba(255,255,255,0.5); }
+        .fin-tab-bar { display:flex; gap:2px; background:#f0f4eb; border-radius:14px; padding:5px; margin-bottom:12px; }
+        .fin-tab-btn { flex:1; text-align:center; padding:10px 14px; border-radius:11px; cursor:pointer; font-size:0.82rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.15s ease; user-select:none; white-space:nowrap; }
+        .fin-tab-btn.active { color:#1f3b2c; background:white; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+        .fin-tab-btn:hover:not(.active) { color:#426b39; background:rgba(255,255,255,0.6); }
         /* ========== 内容区块卡片 ========== */
         .content-card { background:white; border-radius:20px; padding:20px 24px; box-shadow:0 2px 12px rgba(0,0,0,0.04); margin-bottom:16px; }
         .content-card h3 { font-size:0.9rem; font-weight:600; color:#1f3b2c; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #f0f4eb; }
@@ -255,10 +259,10 @@
         .data-table tbody tr { transition:background 0.15s; }
         .data-table tbody tr:hover { background:#f6faf0; }
         /* ========== 仪表盘卡片增强 ========== */
-        .stat-card { transition:all 0.25s ease; cursor:default; }
+        .stat-card { transition:all 0.15s ease; cursor:default; }
         .stat-card.clickable { cursor:pointer; }
-        .stat-card.clickable:hover { transform:translateY(-3px); box-shadow:0 8px 22px rgba(0,0,0,0.08); }
-        .stat-card:hover { transform: scale(1.04); z-index: 5; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+        .stat-card.clickable:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,0.06); }
+        .stat-card:hover { transform: scale(1.02); z-index: 5; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
         .stat-card:hover .stat-num { overflow: visible; white-space: normal; word-break: break-all; max-width: none; }
         /* ========== 分页增强 ========== */
         .page-btn { transition:all 0.2s; }
@@ -342,10 +346,19 @@ async function _apiRequest(method, path, body) {
     if (_apiToken) headers['Authorization'] = 'Bearer ' + _apiToken;
     const opts = { method, headers };
     if (body && method !== 'GET') opts.body = JSON.stringify(body);
-    const res = await fetch(API_BASE + path, opts);
-    const json = await res.json();
-    if (json.code !== 0) throw new Error(json.message || '请求失败');
-    return json.data;
+    const controller = new AbortController();
+    opts.signal = controller.signal;
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+        const res = await fetch(API_BASE + path, opts);
+        clearTimeout(timeout);
+        const json = await res.json();
+        if (json.code !== 0) throw new Error(json.message || '请求失败');
+        return json.data;
+    } catch(e) {
+        clearTimeout(timeout);
+        throw e;
+    }
 }
 
 async function _apiGet(path) { return _apiRequest('GET', path); }
@@ -483,7 +496,7 @@ function startAutoSync() {
             _refreshCurrentView();
         } catch(e) {}
         _isSyncing = false;
-    }, 5000);
+    }, 8000);
 }
 function stopAutoSync() {
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
@@ -4744,31 +4757,29 @@ function jumpCostPeriod() {
 let _finSelectedPage = null;
 function _finSelectModule(page, el) {
     _finSelectedPage = page;
-    document.querySelectorAll('.fin-menu-item').forEach(c => { c.style.background = 'transparent'; c.style.borderColor = 'transparent'; });
-    if (el) { el.style.background = '#f0f7e8'; el.style.borderColor = '#3b9e5c'; }
+    document.querySelectorAll('.fin-tab-btn').forEach(c => { c.classList.remove('active'); });
+    if (el) { el.classList.add('active'); }
     const panel = document.getElementById('finDetailPanel');
     if (!panel || !pageRenderers[page]) return;
-    panel.innerHTML = '<div style="padding:20px;">' + pageRenderers[page]() + '</div>';
+    refreshCurrentTable = function() {};
+    panel.innerHTML = pageRenderers[page]();
     const initFn = window['init_' + page];
     if (typeof initFn === 'function') initFn();
-    // Re-run scripts that were in the original page
-    if (typeof refreshCurrentTable === 'function') { /* preserve outer refresh */ }
 }
 function finParentPage(title, breadcrumb, children) {
     _finSelectedPage = children[0]?.page;
     let previewContent = '';
     if (_finSelectedPage && pageRenderers[_finSelectedPage]) {
-        previewContent = '<div style="padding:20px;">' + pageRenderers[_finSelectedPage]() + '</div>';
+        previewContent = pageRenderers[_finSelectedPage]();
     }
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
-    <div class="page-body" style="display:flex;gap:0;padding:0;">
-        <div style="flex:0 0 200px;background:white;border-radius:16px 0 0 16px;padding:12px 0;box-shadow:2px 0 8px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:2px;min-height:500px;">
-            <div style="padding:8px 16px;font-size:0.65rem;color:#819e73;text-transform:uppercase;letter-spacing:1px;">功能菜单</div>
-            ${children.map(c=>`<div class="fin-menu-item" onclick="_finSelectModule('${c.page}',this)" style="padding:11px 16px;cursor:pointer;border-left:3px solid ${_finSelectedPage===c.page?'#3b9e5c':'transparent'};background:${_finSelectedPage===c.page?'#f0f7e8':'transparent'};transition:all 0.2s;display:flex;align-items:center;gap:10px;font-size:0.78rem;color:#1f3b2c;margin:0 8px;border-radius:8px;">
-                <span style="font-size:1.1rem;width:24px;text-align:center;">${c.icon}</span><span>${c.name}</span>
+    <div class="page-body" style="padding:0;">
+        <div class="fin-tab-bar" style="display:flex;gap:2px;background:#f0f4eb;border-radius:14px;padding:5px;margin-bottom:12px;">
+            ${children.map(c=>`<div class="fin-tab-btn ${_finSelectedPage===c.page?'active':''}" onclick="_finSelectModule('${c.page}',this)" style="flex:1;text-align:center;padding:10px 14px;border-radius:11px;cursor:pointer;font-size:0.82rem;font-weight:600;color:${_finSelectedPage===c.page?'#1f3b2c':'#819e73'};background:${_finSelectedPage===c.page?'white':'transparent'};box-shadow:${_finSelectedPage===c.page?'0 2px 8px rgba(0,0,0,0.08)':'none'};transition:all 0.2s ease;user-select:none;white-space:nowrap;">
+                <span style="margin-right:6px;">${c.icon}</span>${c.name}
             </div>`).join('')}
         </div>
-        <div style="flex:1;background:#f9fbf7;border-radius:0 16px 16px 0;overflow-y:auto;min-height:500px;" id="finDetailPanel">
+        <div style="background:#f9fbf7;border-radius:16px;min-height:500px;" id="finDetailPanel">
             ${previewContent}
         </div>
     </div></div>`;
@@ -4778,6 +4789,12 @@ pageRenderers['fin_report'] = function() { return finParentPage('财务报表生
 pageRenderers['fin_cost'] = function() { return finParentPage('成本核算','财务管理 / 成本核算',[{page:'finance_cost',icon:'🔧',name:'成本核算',desc:'库存成本、已售成本、采购成本及成本结转率分析——系统自动计算，无人工干预'}]); };
 pageRenderers['fin_budget'] = function() { return finParentPage('预算管理','财务管理 / 预算管理',[{page:'finance_budget',icon:'🎯',name:'预算管理',desc:'年度/月度预算编制、执行率跟踪及预算调整'}]); };
 pageRenderers['fin_tax'] = function() { return finParentPage('税务管理','财务管理 / 税务管理',[{page:'finance_tax',icon:'🏛️',name:'税务管理',desc:'税种管理、税务申报及税款缴纳记录'}]); };
+// Finance parent page init — triggers first tab's init after DOM ready
+function init_fin_cashier() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance',el); }
+function init_fin_report() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_report',el); }
+function init_fin_cost() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_cost',el); }
+function init_fin_budget() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_budget',el); }
+function init_fin_tax() { var el=document.querySelector('.fin-tab-btn.active'); if(el) _finSelectModule('finance_tax',el); }
 
 
 // -- 预算管理 --
