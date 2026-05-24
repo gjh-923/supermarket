@@ -1002,6 +1002,51 @@ function saveData(key, data) {
 function initAllData() {
     Object.keys(DEFAULT_DATA).forEach(k => { if(!localStorage.getItem('sms_'+k)) saveData(k, DEFAULT_DATA[k]); });
 }
+function recalcAllMemberStats() {
+    // 从订单和积分记录重建所有会员的 totalSpent、lastConsumeDate、cumulativePoints
+    var members = loadData('members');
+    var orders = loadData('salesOrders');
+    var records = loadData('memberPointsRecords');
+    var changed = false;
+    members.forEach(function(m) {
+        // 从订单计算累计消费和最后消费日期
+        var memberOrders = orders.filter(function(o) {
+            return o.memberId === m.id && o.status !== '退货';
+        });
+        var totalSpent = memberOrders.reduce(function(s, o) { return s + (Number(o.totalAmount) || 0); }, 0);
+        if (Math.abs((m.totalSpent || 0) - totalSpent) > 0.01) {
+            m.totalSpent = totalSpent;
+            changed = true;
+        }
+        // 最后消费日期：取最近一次订单时间的前10位（日期部分）
+        if (memberOrders.length > 0) {
+            var lastOrder = memberOrders.reduce(function(a, b) {
+                return (a.time || '') > (b.time || '') ? a : b;
+            });
+            var lastDate = (lastOrder.time || '').slice(0, 10);
+            if (m.lastConsumeDate !== lastDate) {
+                m.lastConsumeDate = lastDate;
+                changed = true;
+            }
+        } else if (m.lastConsumeDate) {
+            m.lastConsumeDate = '';
+            changed = true;
+        }
+        // 从积分记录重建累计积分（所有正向增加的总和）
+        var memberRecords = records.filter(function(r) { return r.memberId === m.id; });
+        var calcCumPts = memberRecords.reduce(function(s, r) {
+            return s + (r.points > 0 ? r.points : 0);
+        }, 0);
+        // 确保累计积分至少不小于现有积分
+        if (calcCumPts < (m.points || 0)) calcCumPts = m.points || 0;
+        if ((m.cumulativePoints || 0) !== calcCumPts) {
+            m.cumulativePoints = calcCumPts;
+            changed = true;
+        }
+    });
+    if (changed) saveData('members', members);
+    return changed;
+}
 function migrateData() {
     // 迁移会员数据：补充缺失字段
     const members = loadData('members');
@@ -1016,6 +1061,8 @@ function migrateData() {
     members.forEach(m => {
         if (!('cumulativePoints' in m)) { m.cumulativePoints = m.points || 0; membersChanged = true; }
     });
+    // 数据修复：从订单和积分记录重建会员统计数据
+    membersChanged = recalcAllMemberStats() || membersChanged;
     if (membersChanged) saveData('members', members);
     // 去重：移除卡号/手机号重复的会员记录
     deduplicateMembers();
@@ -4149,6 +4196,7 @@ function doBatchAddPoints() {
     if(!confirm(`再次确认：将向"${m.name}"赠送 ${pts} 积分\n当前积分: ${m.points} → ${m.points+pts}\n此操作不可撤销！`)) return;
     if(m.status==='冻结') { alert('冻结状态的会员无法赠送积分'); return; }
     m.points += pts;
+    m.cumulativePoints = (m.cumulativePoints||0) + pts;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'活动赠送', points:pts, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'活动赠送'});
@@ -4176,6 +4224,7 @@ function doAdjustPoints(mid) {
     if(m.points + adj < 0) { alert('积分不足，调整后不能为负数'); return; }
     if(!confirm(`确定${adj>0?'增加':'减少'} "${m.name}" ${Math.abs(adj)} 积分吗？`)) return;
     m.points += adj;
+    if (adj > 0) m.cumulativePoints = (m.cumulativePoints||0) + adj;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:adj>0?'积分调整(增加)':'积分调整(减少)', points:adj, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'管理员调整'});
