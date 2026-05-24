@@ -2722,6 +2722,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
                 addLog(`会员消费: ${m.name} ¥${formatMoney(finalAmount)}, +${earnedPoints}积分, 累计¥${formatMoney(m.totalSpent)}`);
             }
             saveData('members', members);
+        }
     }
     showToast(`结算成功！金额: ¥${formatMoney(finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
     posCart = [];
