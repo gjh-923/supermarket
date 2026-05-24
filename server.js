@@ -557,11 +557,27 @@ app.put('/api/employees/:id', authMiddleware, (req, res) => {
 });
 
 app.delete('/api/employees/:id', authMiddleware, (req, res) => {
-  const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id);
-  if (!emp) return res.json(err('员工不存在'));
-  db.prepare('DELETE FROM employees WHERE id = ?').run(req.params.id);
+  const empId = req.params.id;
+  // 从 SQLite employees 表删除（可能不存在，因为是前端同步到 data_store 的数据）
+  const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(empId);
+  if (emp) {
+    db.prepare('DELETE FROM employees WHERE id = ?').run(empId);
+  }
+  // 从 data_store 中移除（这是前端同步的权威数据源，必须清理）
+  try {
+    const dsRow = db.prepare('SELECT data FROM data_store WHERE key = ?').get('employees');
+    if (dsRow && dsRow.data) {
+      const list = JSON.parse(dsRow.data);
+      const filtered = list.filter(r => String(r.id) !== String(empId));
+      if (filtered.length < list.length) {
+        db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)')
+          .run('employees', JSON.stringify(filtered));
+      }
+    }
+  } catch(e) { console.error('data_store 清理失败:', e); }
+  const name = emp ? emp.name : ('ID:' + empId);
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
-    .run(req.user.name, `删除员工: ${emp.name}`);
+    .run(req.user.name, `删除员工: ${name}`);
   res.json(okMsg('删除成功'));
 });
 
@@ -1497,7 +1513,20 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
     const rows = req.body.data;
     if (!Array.isArray(rows)) return res.json(err('数据格式错误，需为数组'));
 
-    // ID-based merge: avoid overwriting server data with stale client data
+    // 保护：客户端传入空数组时，若服务端已有非空数据则拒绝覆盖
+    if (rows.length === 0) {
+      const existing = db.prepare('SELECT data FROM data_store WHERE key = ?').get(storeKey);
+      if (existing && existing.data) {
+        try {
+          const existingRows = JSON.parse(existing.data);
+          if (Array.isArray(existingRows) && existingRows.length > 0) {
+            return res.json(okMsg('跳过空数据同步，保留服务端现有数据'));
+          }
+        } catch(e) {}
+      }
+    }
+
+    // ID-based merge: client data overwrites same-ID server data, server keeps records not in client
     const existing = db.prepare('SELECT data FROM data_store WHERE key = ?').get(storeKey);
     let merged = rows;
     if (existing && existing.data) {

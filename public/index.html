@@ -968,7 +968,7 @@ function loadData(key) {
 }
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
-    if (_apiToken) {
+    if (_apiToken && !(Array.isArray(data) && data.length === 0)) {
         fetch(API_BASE + '/api/sync/' + key, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
@@ -2621,6 +2621,18 @@ function checkout() {
     });
 }
 
+function getCashierName() {
+    const employees = loadData('employees');
+    const emp = employees.find(e => e.name === currentUser.name);
+    if (emp) return emp.name;
+    const positions = loadData('employeePositions');
+    const cashierPos = positions.find(p => p.name && p.name.includes('收银'));
+    if (cashierPos && cashierPos.employeeNames && cashierPos.employeeNames.length > 0) {
+        return cashierPos.employeeNames[0];
+    }
+    return currentUser.name;
+}
+
 // 本地结算（API 不可用时的降级方案）
 function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod) {
     // 扣减库存
@@ -2648,7 +2660,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
         promoAmount: actualCouponDiscount + bundleDiscount,
         couponDiscount: actualCouponDiscount, bundleDiscount,
         memberId: posMember?.id||null, memberName: posMember?.name||'',
-        time: getNow(), cashier: currentUser.name,
+        time: getNow(), cashier: getCashierName(),
         paymentMethod: payMethod
     });
     saveData('salesOrders', orders);
@@ -3030,7 +3042,6 @@ pageRenderers['member'] = function() {
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statMemActive" style="color:#2a7a3b;">-</div><div class="stat-label">正常会员</div></div>
                 <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-num" id="statMemNew">-</div><div class="stat-label">本月新增</div></div>
                 <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statMemPoints">-</div><div class="stat-label">现有积分池</div></div>
-                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" id="statMemCumPts" style="color:#b87c1a;">-</div><div class="stat-label">累计积分总计</div></div>
                 <div class="stat-card"><div class="stat-icon">❄️</div><div class="stat-num" id="statMemFrozen" style="color:#bc5a4a;">-</div><div class="stat-label">冻结会员</div></div>
             </div>
             <div class="action-bar">
@@ -3050,7 +3061,7 @@ ${currentUser.role!=="cashier"?`                    <button class="btn btn-outli
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>现有积分</th><th>累积积分</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
+                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>现有积分</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -3068,12 +3079,10 @@ function updateMemberStats() {
     const frozen = members.filter(m=>m.status==='冻结').length;
     const newThis = members.filter(m=>m.joinDate&&m.joinDate.startsWith(thisMonth)).length;
     const totalPts = members.reduce((s,m)=>s+(m.points||0),0);
-    const totalCumPts = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
     document.getElementById('statMemTotal').textContent = members.length;
     document.getElementById('statMemActive').textContent = active;
     document.getElementById('statMemNew').textContent = newThis;
     document.getElementById('statMemPoints').textContent = totalPts;
-    document.getElementById('statMemCumPts').textContent = totalCumPts;
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
@@ -3091,7 +3100,6 @@ function init_member() {
                  return `<span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}44;">${m.level}</span>`;
              }},
              {key:'points',render:m=>`<span style="font-weight:600;color:#2b6e3c;">${m.points||0}</span>`},
-             {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
              {key:'joinDate'},
              {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)},
              {key:'status',render:m=>`<span class="badge ${(m.status||'正常')==='正常'?'badge-on':'badge-off'}">${m.status||'正常'}</span>`},
@@ -5122,11 +5130,15 @@ function saveEmployee() {
     addLog(`员工操作: ${idNum?'编辑':'新增'} ${data.name}`);
     showToast('员工信息已保存');
 }
-function deleteEmployee(emp) {
+async function deleteEmployee(emp) {
     if(!confirm(`确定删除员工"${emp.name}"吗？`)) return;
     let employees = loadData('employees');
     const empId = parseInt(emp.id);
     employees = employees.filter(x=>parseInt(x.id)!==empId);
+    // 先删除服务器端记录（清理 data_store），再保存本地（触发 sync POST）
+    if (_apiToken) {
+        try { await _apiDel('/api/employees/' + empId); } catch(e) {}
+    }
     saveData('employees', employees);
     refreshCurrentTable();
     addLog(`删除员工: ${emp.name}`);
