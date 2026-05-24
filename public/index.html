@@ -1778,14 +1778,6 @@ function getCategoryNames() {
     if (typeof cats[0] === 'string') return cats; // 兼容旧格式
     return cats.filter(c => c.status !== '隐藏').sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).map(c => c.name);
 }
-// 获取所有分类名称（包括隐藏的）
-function getAllCategoryNames() {
-    const cats = loadData('categories');
-    if (!cats.length) return [];
-    if (typeof cats[0] === 'string') return cats;
-    return cats.sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).map(c => c.name);
-}
-// 根据名称获取分类对象
 function getCategoryByName(name) {
     const cats = loadData('categories');
     if (!cats.length) return null;
@@ -1799,41 +1791,12 @@ function getCategoryById(id) {
     if (typeof cats[0] === 'string') return null;
     return cats.find(c => String(c.id) === String(id)) || null;
 }
-// 获取分类树（用于层级展示）
-function getCategoryTree() {
-    const cats = loadData('categories');
-    if (!cats.length || typeof cats[0] === 'string') return [];
-    const sorted = [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
-    const map = new Map();
-    const roots = [];
-    sorted.forEach(c => {
-        c._children = [];
-        map.set(c.id, c);
-    });
-    sorted.forEach(c => {
-        if (c.parentId && map.has(c.parentId)) {
-            map.get(c.parentId)._children.push(c);
-        } else {
-            roots.push(c);
-        }
-    });
-    return roots;
-}
-// 展平分类树（带层级前缀）
-function flattenCategoryTree(tree, level) {
-    level = level || 0;
-    let result = [];
-    tree.forEach(c => {
-        result.push({...c, _level: level, _prefix: level > 0 ? '├ '.repeat(level) + ' ' : ''});
-        if (c._children && c._children.length) {
-            result = result.concat(flattenCategoryTree(c._children, level + 1));
-        }
-    });
-    return result;
-}
 // 获取分类下的产品数量
 function getCategoryProductCount(catName) {
-    return loadData('products').filter(p => p.category === catName).length;
+    var products = loadData('products');
+    var count = 0;
+    for (var i = 0; i < products.length; i++) { if (products[i].category === catName) count++; }
+    return count;
 }
 
 // -- 商品分类管理 --
@@ -2047,7 +2010,15 @@ function saveNewCategory() {
 function deleteCategory(catId) {
     var cat = getCategoryById(catId);
     if (!cat) { alert('分类不存在'); return; }
-    if (!confirm('确定删除分类"' + cat.name + '"吗？\n该分类下的商品将变为"未分类"。')) return;
+    // 检查该分类下是否有商品
+    var products = loadData('products');
+    var prodCount = 0;
+    for (var pi = 0; pi < products.length; pi++) { if (products[pi].category === cat.name) prodCount++; }
+    if (prodCount > 0) {
+        alert('分类"' + cat.name + '"下还有 ' + prodCount + ' 件商品，请先将商品转移到其他分类后再删除。\n\n可使用"批量转移商品"功能进行操作。');
+        return;
+    }
+    if (!confirm('确定删除分类"' + cat.name + '"吗？此操作不可恢复。')) return;
 
     var cats = loadData('categories');
     if (typeof cats[0] === 'string') {
@@ -2060,9 +2031,6 @@ function deleteCategory(catId) {
         cats = newCats2;
     }
     saveData('categories', cats);
-    var products = loadData('products');
-    for (var k = 0; k < products.length; k++) { if (products[k].category === cat.name) products[k].category = '未分类'; }
-    saveData('products', products);
     navigateTo('category');
     addLog('删除分类: ' + cat.name);
     showToast('已删除分类"' + cat.name + '"');
