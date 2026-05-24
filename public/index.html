@@ -468,7 +468,9 @@ async function _apiSyncAll() {
             transformed = _normalizeData(camelKey, transformed);
             localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
         }
-        // 同步后立即修复会员stats（服务器数据可能滞后，从订单和积分记录重建）
+        // 同步后立即修复数据一致性
+        try { deduplicateCategories(); } catch(e) {}
+        try { syncProductCategories(); } catch(e) {}
         try { recalcAllMemberStats(); } catch(e) {}
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
@@ -646,6 +648,25 @@ async function _apiGetDashboard() {
 
 async function _apiGetSalesStats() {
     return await _apiGet('/api/stats/sales');
+}
+
+async function _apiSaveCategory(cat) {
+    if (cat.id) {
+        return await _apiPut('/api/categories/' + encodeURIComponent(cat.name), cat);
+    } else {
+        return await _apiPost('/api/categories', cat);
+    }
+}
+async function _apiDeleteCategory(name) {
+    return await _apiDel('/api/categories/' + encodeURIComponent(name));
+}
+async function _syncCategoriesToServer() {
+    // 将本地全部分类推送到服务器
+    var cats = loadData('categories');
+    if (!cats.length) return;
+    await _apiPost('/api/sync/categories', { data: cats }).catch(function(e) {
+        console.warn('分类同步到服务器失败:', e.message);
+    });
 }
 
 async function _apiUploadProductImage(file) {
@@ -1057,6 +1078,8 @@ function recalcAllMemberStats() {
     return changed;
 }
 function syncProductCategories() {
+    // 先去重，防止同名分类重复
+    deduplicateCategories();
     // 确保所有产品中的分类都存在于 categories 表中，保持数据一致性
     var products = loadData('products');
     var categories = loadData('categories');
@@ -1098,6 +1121,33 @@ function syncProductCategories() {
         saveData('categories', categories);
     }
     if (productsChanged) saveData('products', products);
+}
+function deduplicateCategories() {
+    // 按名称去重：保留第一个（通常是本地最早创建的），删除后续同名的
+    var cats = loadData('categories');
+    if (!cats.length || typeof cats[0] === 'string') return;
+    var seen = {};
+    var deduped = [];
+    var changed = false;
+    for (var i = 0; i < cats.length; i++) {
+        var c = cats[i];
+        if (seen[c.name]) {
+            changed = true;
+            // 将重复分类下的产品迁移到保留的分类
+            var products = loadData('products');
+            var prodChanged = false;
+            for (var j = 0; j < products.length; j++) {
+                if (products[j].category === c.name && products[j].id) {
+                    // 产品已引用此名称，无需迁移（名称相同）
+                    // 但如果分类ID不同，保留第一个分类的引用
+                }
+            }
+            continue; // 跳过重复
+        }
+        seen[c.name] = true;
+        deduped.push(c);
+    }
+    if (changed) saveData('categories', deduped);
 }
 function migrateData() {
     // 迁移会员数据：补充缺失字段
@@ -1995,6 +2045,8 @@ var _catFlatList = [];
 function init_category() {
     _catFlatList = buildCategoryFlatList();
     refreshCurrentTable = function() {
+        // 每次刷新从 localStorage 重新加载（避免自动同步后使用过期的 _catFlatList）
+        _catFlatList = buildCategoryFlatList();
         var container = document.getElementById('catListContainer');
         if (container) {
             container.innerHTML = renderCatFlatTable(_catFlatList);
@@ -2105,6 +2157,7 @@ function saveNewCategory() {
         cats.push({id: maxId + 1, name: name, parentId: null, sortOrder: sortOrder, status: status, image: image, notes: notes});
     }
     saveData('categories', cats);
+    _syncCategoriesToServer();
     closeModal();
     navigateTo('category');
     addLog('分类操作: ' + (id ? '编辑' : '新增') + ' ' + name);
@@ -2135,6 +2188,7 @@ function deleteCategory(catId) {
         cats = newCats2;
     }
     saveData('categories', cats);
+    _syncCategoriesToServer();
     navigateTo('category');
     addLog('删除分类: ' + cat.name);
     showToast('已删除分类"' + cat.name + '"');
@@ -2153,6 +2207,7 @@ function toggleCategoryStatus(catId) {
     if (!cat) return;
     cat.status = cat.status === '显示' ? '隐藏' : '显示';
     saveData('categories', cats);
+    _syncCategoriesToServer();
     init_category();
     addLog('分类状态切换: ' + cat.name + ' → ' + cat.status);
     showToast('"' + cat.name + '" 已设为' + cat.status);
@@ -2176,6 +2231,7 @@ function moveCategoryUp(catId) {
     cat.sortOrder = prev.sortOrder;
     prev.sortOrder = tmp;
     saveData('categories', cats);
+    _syncCategoriesToServer();
     init_category();
 }
 
@@ -2196,6 +2252,7 @@ function moveCategoryDown(catId) {
     cat.sortOrder = next.sortOrder;
     next.sortOrder = tmp;
     saveData('categories', cats);
+    _syncCategoriesToServer();
     init_category();
 }
 

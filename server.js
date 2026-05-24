@@ -279,6 +279,7 @@ app.post('/api/categories', authMiddleware, (req, res) => {
     db.prepare('INSERT OR IGNORE INTO categories (name, sort, description) VALUES (?, ?, ?)').run(name, sort || 0, description || '');
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `新增分类: ${name}`);
+    syncAffectedTablesToDataStore();
     res.json(okMsg('添加成功'));
   } catch (e) {
     res.json(err(e.message));
@@ -295,6 +296,7 @@ app.put('/api/categories/:name', authMiddleware, (req, res) => {
     }
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `编辑分类: ${req.params.name}`);
+    syncAffectedTablesToDataStore();
     res.json(okMsg('修改成功'));
   } catch (e) {
     res.json(err(e.message));
@@ -306,6 +308,7 @@ app.delete('/api/categories/:name', authMiddleware, (req, res) => {
     db.prepare('DELETE FROM categories WHERE name = ?').run(req.params.name);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `删除分类: ${req.params.name}`);
+    syncAffectedTablesToDataStore();
     res.json(okMsg('删除成功'));
   } catch (e) {
     res.json(err(e.message));
@@ -1506,6 +1509,7 @@ const ALLOWED_SYNC_KEYS = new Set([
   'employees', 'employeePositions', 'departments',
   'schedules', 'attendances', 'salaries',
   'salesOrders', 'purchaseOrders', 'inventoryRecords',
+  'categories',
   'promotions', 'inventoryAlertSettings', 'inventoryCheckTasks', 'inventoryCheckItems',
   'warehouseZones', 'financeLedger', 'financeBudget', 'financeTax',
   'systemRoles', 'systemMenus', 'dictItems', 'systemParams', 'notices', 'monitorConfigs',
