@@ -536,7 +536,13 @@ function _normalizeData(key, data) {
         });
     }
     if (key === 'categories') {
-        return data.map(c => typeof c === 'string' ? c : (c && c.name ? c.name : String(c || '')));
+        return data.map(c => {
+            if (typeof c === 'string') {
+                // 旧格式字符串 → 对象
+                return {id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), name: c, parentId: null, sortOrder: 0, status: '显示', image: '', notes: ''};
+            }
+            return {id: c.id, name: c.name, parentId: c.parentId||null, sortOrder: c.sortOrder||0, status: c.status||'显示', image: c.image||'', notes: c.notes||''};
+        });
     }
     if (key === 'salesOrders') {
         return data.map(o => {
@@ -763,7 +769,20 @@ const DEFAULT_DATA = {
         { id:11,code:'SP20240111',name:'苹果',category:'蔬菜水果',supplier:'源兴果业',purchasePrice:5.5,retailPrice:9.9,stock:1200,unit:'斤',status:'上架',sales:890,produceDate:getToday(-6),expiryDate:getToday(10),description:'红富士冰糖心' },
         { id:12,code:'SP20240112',name:'香蕉',category:'蔬菜水果',supplier:'南方果园',purchasePrice:3.8,retailPrice:6.5,stock:800,unit:'斤',status:'上架',sales:1230,produceDate:getToday(-4),expiryDate:getToday(7),description:'香甜软糯' }
     ],
-    categories: ['蔬菜水果','饼干糕点','肉干零食','糖果','酒水饮料','粮油调味','乳品烘焙','日用百货','休闲食品','冷冻食品','调味品','个人护理'],
+    categories: [
+        {id:1,name:'蔬菜水果',parentId:null,sortOrder:1,status:'显示',image:'',notes:''},
+        {id:2,name:'饼干糕点',parentId:null,sortOrder:2,status:'显示',image:'',notes:''},
+        {id:3,name:'肉干零食',parentId:null,sortOrder:3,status:'显示',image:'',notes:''},
+        {id:4,name:'糖果',parentId:null,sortOrder:4,status:'显示',image:'',notes:''},
+        {id:5,name:'酒水饮料',parentId:null,sortOrder:5,status:'显示',image:'',notes:''},
+        {id:6,name:'粮油调味',parentId:null,sortOrder:6,status:'显示',image:'',notes:''},
+        {id:7,name:'乳品烘焙',parentId:null,sortOrder:7,status:'显示',image:'',notes:''},
+        {id:8,name:'日用百货',parentId:null,sortOrder:8,status:'显示',image:'',notes:''},
+        {id:9,name:'休闲食品',parentId:null,sortOrder:9,status:'显示',image:'',notes:''},
+        {id:10,name:'冷冻食品',parentId:null,sortOrder:10,status:'显示',image:'',notes:''},
+        {id:11,name:'调味品',parentId:null,sortOrder:11,status:'显示',image:'',notes:''},
+        {id:12,name:'个人护理',parentId:null,sortOrder:12,status:'显示',image:'',notes:''}
+    ],
     members: [
         { id:1,cardNo:'HY20240001',name:'张三',gender:'男',birthday:'1990-05-15',phone:'13800001001',email:'zhangsan@email.com',address:'北京市朝阳区建国路88号',level:'黄金会员',points:2580,cumulativePoints:2580,joinDate:'2024-01-15',totalSpent:25800,status:'正常',lastConsumeDate:'2024-05-20',source:'门店注册' },
         { id:2,cardNo:'HY20240002',name:'李四',gender:'女',birthday:'1995-08-22',phone:'13800001002',email:'lisi@email.com',address:'北京市海淀区中关村1号',level:'白银会员',points:890,cumulativePoints:890,joinDate:'2024-03-20',totalSpent:8900,status:'正常',lastConsumeDate:'2024-05-18',source:'小程序注册' },
@@ -1052,6 +1071,17 @@ function migrateData() {
     });
     if (contractChanged) saveData('supplierContracts', contracts);
     if (supplierChanged) saveData('suppliers', suppliers);
+
+    // 迁移分类数据：旧格式（字符串数组）→ 新格式（对象数组）
+    let categories = loadData('categories');
+    if (categories.length > 0 && typeof categories[0] === 'string') {
+        categories = categories.map((c, i) => ({
+            id: i + 1, name: c, parentId: null,
+            sortOrder: i + 1, status: '显示', image: '', notes: ''
+        }));
+        saveData('categories', categories);
+        console.log('分类数据已迁移为对象格式, 共', categories.length, '条');
+    }
 }
 initAllData();
 migrateData();
@@ -1632,8 +1662,8 @@ function doStockOut(pid) {
 
 function getProductFormHTML(p) {
     p = p || {};
-    const cats = loadData('categories');
     const unit = p.unit || '件';
+    const cats = getCategoryNames();
     const imgPreview = p.image ? `<div style="margin-top:8px;"><img src="${p.image}" style="max-width:200px;max-height:150px;border-radius:8px;border:1px solid #dde6d4;"></div>` : '';
     return `
     <input type="hidden" id="frmId" value="${p.id||''}">
@@ -1739,67 +1769,594 @@ function resetProducts() {
     showToast('已恢复默认商品数据');
 }
 
+// ==================== 分类工具函数 ====================
+// 获取分类名称列表（用于下拉框等，只返回"显示"状态的分类）
+function getCategoryNames() {
+    const cats = loadData('categories');
+    if (!cats.length) return [];
+    if (typeof cats[0] === 'string') return cats; // 兼容旧格式
+    return cats.filter(c => c.status !== '隐藏').sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).map(c => c.name);
+}
+// 获取所有分类名称（包括隐藏的）
+function getAllCategoryNames() {
+    const cats = loadData('categories');
+    if (!cats.length) return [];
+    if (typeof cats[0] === 'string') return cats;
+    return cats.sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).map(c => c.name);
+}
+// 根据名称获取分类对象
+function getCategoryByName(name) {
+    const cats = loadData('categories');
+    if (!cats.length) return null;
+    if (typeof cats[0] === 'string') return name;
+    return cats.find(c => c.name === name) || null;
+}
+// 根据ID获取分类对象
+function getCategoryById(id) {
+    const cats = loadData('categories');
+    if (!cats.length) return null;
+    if (typeof cats[0] === 'string') return null;
+    return cats.find(c => String(c.id) === String(id)) || null;
+}
+// 获取分类树（用于层级展示）
+function getCategoryTree() {
+    const cats = loadData('categories');
+    if (!cats.length || typeof cats[0] === 'string') return [];
+    const sorted = [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+    const map = new Map();
+    const roots = [];
+    sorted.forEach(c => {
+        c._children = [];
+        map.set(c.id, c);
+    });
+    sorted.forEach(c => {
+        if (c.parentId && map.has(c.parentId)) {
+            map.get(c.parentId)._children.push(c);
+        } else {
+            roots.push(c);
+        }
+    });
+    return roots;
+}
+// 展平分类树（带层级前缀）
+function flattenCategoryTree(tree, level) {
+    level = level || 0;
+    let result = [];
+    tree.forEach(c => {
+        result.push({...c, _level: level, _prefix: level > 0 ? '├ '.repeat(level) + ' ' : ''});
+        if (c._children && c._children.length) {
+            result = result.concat(flattenCategoryTree(c._children, level + 1));
+        }
+    });
+    return result;
+}
+// 获取分类下的产品数量
+function getCategoryProductCount(catName) {
+    return loadData('products').filter(p => p.category === catName).length;
+}
+
 // -- 商品分类管理 --
 pageRenderers['category'] = function() {
-    const cats = loadData('categories');
-    return renderTablePage('商品分类管理', '商品管理 / 分类管理',
-        ['序号','分类名称','商品数量'],
-        cats.map((c,i)=>({id:i+1,name:c,count:loadData('products').filter(p=>p.category===c).length})),
-        [{label:'编辑',action:editCategory},{label:'删除',action:deleteCategory}],
-        `<button class="btn btn-primary" onclick="addCategory()">新增分类</button>`,
-        '请输入分类名称查询'
-    );
+    const flat = buildCategoryFlatList();
+    const totalProducts = loadData('products').length;
+    const totalCats = flat.length;
+    const hiddenCats = flat.filter(c => c.status === '隐藏').length;
+    const catsWithSub = flat.filter(c => {
+        const all = loadData('categories');
+        if (typeof all[0] === 'string') return false;
+        return all.some(cc => cc.parentId === c.id);
+    }).length;
+    return `
+    <div class="page active">
+        <div class="page-header"><div><h1>商品分类管理</h1><div class="breadcrumb">商品管理 / 分类管理</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()}</div></div>
+        <div class="page-body">
+            <div class="dashboard-grid" style="margin-bottom:8px;">
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">📂</div><div class="stat-num" style="font-size:1rem;">${totalCats}</div><div class="stat-label" style="font-size:0.6rem;">分类总数</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">📦</div><div class="stat-num" style="font-size:1rem;">${totalProducts}</div><div class="stat-label" style="font-size:0.6rem;">商品总数</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">🌳</div><div class="stat-num" style="font-size:1rem;color:#b87c1a;">${catsWithSub}</div><div class="stat-label" style="font-size:0.6rem;">含子分类</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">👁️</div><div class="stat-num" style="font-size:1rem;color:#2a7a3b;">${totalCats-hiddenCats}</div><div class="stat-label" style="font-size:0.6rem;">显示中</div></div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="addCategory()">+ 新增分类</button>
+                <button class="btn btn-outline" onclick="batchMoveProducts()">📦 批量转移商品</button>
+                <button class="btn btn-outline" onclick="showCatStats()">📊 分类统计</button>
+                <button class="btn btn-outline" onclick="exportCategories()">📤 导出</button>
+                <button class="btn btn-outline" onclick="importCategoriesPrompt()">📥 导入</button>
+                <span style="margin-left:auto;display:flex;gap:4px;">
+                    <input type="text" id="catSearchInput" placeholder="搜索分类..." oninput="catFilter()" style="padding:8px 12px;border-radius:12px;border:1.5px solid #dde6d4;width:200px;font-size:0.8rem;">
+                    <select id="catStatusFilter" onchange="catFilter()" style="padding:8px 12px;border-radius:12px;border:1.5px solid #dde6d4;font-size:0.8rem;">
+                        <option value="全部">全部状态</option><option value="显示">显示</option><option value="隐藏">隐藏</option>
+                    </select>
+                    <button class="btn btn-outline" onclick="expandAllCats()" style="font-size:0.75rem;">📂 展开</button>
+                    <button class="btn btn-outline" onclick="collapseAllCats()" style="font-size:0.75rem;">📁 收起</button>
+                </span>
+            </div>
+            <div class="table-wrap" id="catTreeContainer">
+                ${renderCatTreeView(buildCategoryTree())}
+            </div>
+        </div>
+    </div>`;
 };
-function init_category() {
+
+function buildCategoryFlatList() {
     const cats = loadData('categories');
-    const data = cats.map((c,i)=>({id:i+1,name:c,count:loadData('products').filter(p=>p.category===c).length}));
-    refreshCurrentTable = () => renderTableData(data,
-        [{key:'id'},{key:'name'},{key:'count'}],
-        [{label:'编辑',action:editCategory},{label:'删除',action:deleteCategory}],
-        (item,term)=>item.name.includes(term)
-    );
+    if (!cats.length) return [];
+    if (typeof cats[0] === 'string') return cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}));
+    return [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+}
+
+function buildCategoryTree() {
+    const cats = loadData('categories');
+    if (!cats.length || typeof cats[0] === 'string') {
+        return cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:'', _children:[]}));
+    }
+    const sorted = [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+    const map = new Map();
+    const roots = [];
+    sorted.forEach(c => {
+        const node = {...c, _children: []};
+        map.set(c.id, node);
+    });
+    sorted.forEach(c => {
+        const node = map.get(c.id);
+        if (c.parentId && map.has(c.parentId)) {
+            map.get(c.parentId)._children.push(node);
+        } else {
+            roots.push(node);
+        }
+    });
+    return roots;
+}
+
+function renderCatTreeView(tree, parentPrefix) {
+    parentPrefix = parentPrefix || '';
+    const flatList = flattenCatTreeWithMeta(tree);
+    const term = (document.getElementById('catSearchInput')?.value || '').trim().toLowerCase();
+    const statusFilter = document.getElementById('catStatusFilter')?.value || '全部';
+    let html = '<table class="data-table" style="min-width:800px;"><thead><tr>';
+    html += '<th style="width:50px;">序号</th><th>分类名称</th><th style="width:80px;">状态</th><th style="width:80px;">商品数</th><th style="width:120px;">操作</th>';
+    html += '</tr></thead><tbody>';
+    let visibleIdx = 0;
+    flatList.forEach(c => {
+        if (term && !c.name.toLowerCase().includes(term)) return;
+        if (statusFilter !== '全部' && c.status !== statusFilter) return;
+        visibleIdx++;
+        const count = getCategoryProductCount(c.name);
+        const statusBadge = c.status === '显示' ? '<span class="badge badge-on">显示</span>' : '<span class="badge badge-off">隐藏</span>';
+        const indent = c._level > 0 ? `<span style="color:#b0c4a0;">${'│ '.repeat(c._level-1)}├ </span>` : '';
+        const imgTag = c.image ? `<img src="${c.image}" style="width:20px;height:20px;border-radius:4px;margin-right:4px;vertical-align:middle;">` : '';
+        const noteIcon = c.notes ? ` <span title="${c.notes.replace(/"/g,'&quot;')}" style="cursor:help;font-size:0.7rem;">💬</span>` : '';
+        const hasChildren = c._children && c._children.length > 0;
+        const expandIcon = hasChildren ? `<span class="cat-expand-toggle" data-id="${c.id}" style="cursor:pointer;margin-right:4px;" onclick="toggleCatNode(event,'${c.id}')" title="展开/收起子分类">▶</span>` : `<span style="display:inline-block;width:18px;"></span>`;
+        html += `<tr class="cat-row" data-cat-id="${c.id}" data-parent="${c.parentId||''}" data-level="${c._level}" style="${c._level>0?'background:#fafff7;':''}">`;
+        html += `<td>${visibleIdx}</td>`;
+        html += `<td>${expandIcon}${indent}${imgTag}<strong>${c.name}</strong>${noteIcon}</td>`;
+        html += `<td>${statusBadge}</td>`;
+        html += `<td style="text-align:center;"><span style="font-weight:600;color:#2a7a3b;" onclick="viewCatProducts('${c.name.replace(/'/g,"\\'")}')" style="cursor:pointer;text-decoration:underline;" title="点击查看该分类下的商品">${count}</span></td>`;
+        html += `<td style="white-space:nowrap;">`;
+        html += `<button class="btn btn-sm btn-outline" onclick="editCategory(${c.id})" title="编辑">✏️</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(${c.id})" title="上移">⬆️</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(${c.id})" title="下移">⬇️</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(${c.id})" title="切换显示/隐藏">${c.status==='显示'?'👁️':'🚫'}</button>`;
+        html += `<button class="btn btn-sm btn-outline" onclick="deleteCategory(${c.id})" title="删除" style="color:#c23d2e;">🗑️</button>`;
+        html += `</td></tr>`;
+        // Collapsible children rows are nested in the same flat list, controlled via CSS
+    });
+    if (visibleIdx === 0) html += '<tr><td colspan="5" style="text-align:center;padding:40px;color:#819e73;">暂无分类数据</td></tr>';
+    html += '</tbody></table>';
+    return html;
+}
+
+function flattenCatTreeWithMeta(tree, level, parentId) {
+    level = level || 0;
+    parentId = parentId || null;
+    let result = [];
+    tree.forEach(c => {
+        result.push({...c, _level: level, _parentId: parentId});
+        if (c._children && c._children.length) {
+            result = result.concat(flattenCatTreeWithMeta(c._children, level + 1, c.id));
+        }
+    });
+    return result;
+}
+
+function init_category() {
+    refreshCurrentTable = () => {
+        const container = document.getElementById('catTreeContainer');
+        if (container) {
+            container.innerHTML = renderCatTreeView(buildCategoryTree());
+        }
+    };
     refreshCurrentTable();
 }
-function addCategory() {
-    openModal('新增分类', `<div class="form-field"><label>分类名称</label><input id="frmCatName"></div>`,
-        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCategory()">保存</button>`);
+
+function catFilter() {
+    init_category();
 }
-function editCategory(c) {
-    openModal('编辑分类', `<div class="form-field"><label>分类名称</label><input id="frmCatName" value="${c.name}"><input type="hidden" id="frmOldName" value="${c.name}"></div>`,
-        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCategory()">保存</button>`);
+
+function expandAllCats() {
+    document.querySelectorAll('.cat-row[data-level]').forEach(r => r.style.display = '');
 }
-function saveCategory() {
+function collapseAllCats() {
+    const rows = document.querySelectorAll('.cat-row');
+    rows.forEach(r => {
+        if (parseInt(r.getAttribute('data-level')||0) > 0) r.style.display = 'none';
+    });
+}
+
+function toggleCatNode(evt, catId) {
+    evt.stopPropagation();
+    const icon = evt.target;
+    const isExpanded = icon.textContent === '▼';
+    icon.textContent = isExpanded ? '▶' : '▼';
+    const rows = document.querySelectorAll('.cat-row');
+    let found = false;
+    let targetLevel = -1;
+    rows.forEach(r => {
+        if (String(r.getAttribute('data-cat-id')) === String(catId)) {
+            found = true;
+            targetLevel = parseInt(r.getAttribute('data-level')||0);
+            return;
+        }
+        if (found) {
+            const rLevel = parseInt(r.getAttribute('data-level')||0);
+            if (rLevel <= targetLevel) { found = false; return; }
+            r.style.display = isExpanded ? '' : 'none';
+        }
+    });
+}
+
+function addCategory(parentId) {
+    parentId = parentId || null;
+    const cats = loadData('categories');
+    const allNames = getAllCategoryNames();
+    const parentOptions = allNames.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+    const parentLabel = parentId && getCategoryById(parentId) ? `（上级：${getCategoryById(parentId).name}）` : '';
+    openModal('新增分类' + parentLabel, `
+        <div class="form-field"><label>上级分类</label><select id="frmCatParent"><option value="">无（顶级分类）</option>${parentOptions}</select></div>
+        <div class="form-field"><label>分类名称 *</label><input id="frmCatName" placeholder="请输入分类名称"></div>
+        <div class="form-row">
+            <div class="form-field"><label>排序序号</label><input type="number" id="frmCatSort" value="${cats.length+1}" style="width:80px;"></div>
+            <div class="form-field"><label>展示状态</label><select id="frmCatStatus"><option value="显示">显示</option><option value="隐藏">隐藏</option></select></div>
+        </div>
+        <div class="form-field"><label>分类图片（URL或上传base64）</label><input id="frmCatImage" placeholder="https://... 或粘贴图片数据"><input type="file" id="frmCatImageFile" accept="image/*" onchange="previewCatImage()" style="margin-top:4px;"><div id="frmCatImagePreview"></div></div>
+        <div class="form-field"><label>备注说明</label><textarea id="frmCatNotes" rows="2" placeholder="分类备注信息"></textarea></div>
+        <input type="hidden" id="frmCatId" value="">
+    `, `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveNewCategory()">保存</button>`);
+}
+
+function previewCatImage() {
+    const file = document.getElementById('frmCatImageFile').files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        document.getElementById('frmCatImage').value = e.target.result;
+        document.getElementById('frmCatImagePreview').innerHTML = `<img src="${e.target.result}" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:4px;">`;
+    };
+    reader.readAsDataURL(file);
+}
+
+function editCategory(catId) {
+    const cat = getCategoryById(catId);
+    if (!cat) { alert('分类不存在'); return; }
+    const allNames = getAllCategoryNames().filter(n => n !== cat.name);
+    const parentOptions = allNames.map(n => `<option value="${n.replace(/"/g,'&quot;')}" ${n===getCategoryById(cat.parentId)?.name?'selected':''}>${n}</option>`).join('');
+    const imgPreview = cat.image ? `<img src="${cat.image}" style="max-width:120px;max-height:80px;border-radius:8px;margin-top:4px;">` : '';
+    openModal('编辑分类 - ' + cat.name, `
+        <div class="form-field"><label>上级分类</label><select id="frmCatParent"><option value="" ${!cat.parentId?'selected':''}>无（顶级分类）</option>${parentOptions}</select></div>
+        <div class="form-field"><label>分类名称 *</label><input id="frmCatName" value="${cat.name.replace(/"/g,'&quot;')}"></div>
+        <div class="form-row">
+            <div class="form-field"><label>排序序号</label><input type="number" id="frmCatSort" value="${cat.sortOrder||0}" style="width:80px;"></div>
+            <div class="form-field"><label>展示状态</label><select id="frmCatStatus"><option value="显示" ${cat.status==='显示'?'selected':''}>显示</option><option value="隐藏" ${cat.status==='隐藏'?'selected':''}>隐藏</option></select></div>
+        </div>
+        <div class="form-field"><label>分类图片</label><input id="frmCatImage" value="${(cat.image||'').replace(/"/g,'&quot;')}" placeholder="https://... 或粘贴图片数据"><input type="file" id="frmCatImageFile" accept="image/*" onchange="previewCatImage()" style="margin-top:4px;"><div id="frmCatImagePreview">${imgPreview}</div></div>
+        <div class="form-field"><label>备注说明</label><textarea id="frmCatNotes" rows="2">${(cat.notes||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea></div>
+        <input type="hidden" id="frmCatId" value="${cat.id}">
+    `, `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-outline" onclick="deleteCategoryFromEdit(${cat.id})" style="color:#c23d2e;">删除此分类</button><button class="btn btn-primary" onclick="saveNewCategory()">保存</button>`);
+}
+
+function saveNewCategory() {
+    const id = document.getElementById('frmCatId')?.value;
     const name = document.getElementById('frmCatName').value.trim();
-    const oldName = document.getElementById('frmOldName')?.value;
-    if(!name) { alert('分类名称不能为空'); return; }
+    const parentName = document.getElementById('frmCatParent')?.value || '';
+    const sortOrder = parseInt(document.getElementById('frmCatSort')?.value) || 0;
+    const status = document.getElementById('frmCatStatus')?.value || '显示';
+    const image = document.getElementById('frmCatImage')?.value || '';
+    const notes = document.getElementById('frmCatNotes')?.value || '';
+    if (!name) { alert('分类名称不能为空'); return; }
+
     let cats = loadData('categories');
-    if(oldName) {
-        const idx = cats.indexOf(oldName);
-        if(idx!==-1) cats[idx] = name;
-        const products = loadData('products');
-        products.forEach(p => { if(p.category===oldName) p.category = name; });
-        saveData('products', products);
+    // 兼容旧格式转换
+    if (cats.length > 0 && typeof cats[0] === 'string') {
+        cats = cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}));
+    }
+
+    const parentCat = parentName ? cats.find(c => c.name === parentName) : null;
+    const parentId = parentCat ? parentCat.id : null;
+
+    // 检测循环引用：不能将自己的后代设为父级
+    if (id && parentId) {
+        const descendants = getAllDescendantIds(parseInt(id), cats);
+        if (descendants.includes(parentId) || parseInt(id) === parentId) {
+            alert('不能将分类的上级设为自己或自己的子分类，会造成循环引用。');
+            return;
+        }
+    }
+
+    if (id) {
+        // 编辑现有分类
+        const cat = cats.find(c => String(c.id) === String(id));
+        if (!cat) { alert('分类不存在'); return; }
+        const oldName = cat.name;
+        // 检查名称唯一性
+        if (name !== oldName && cats.some(c => c.name === name)) { alert('分类名称已存在'); return; }
+        cat.name = name;
+        cat.parentId = parentId;
+        cat.sortOrder = sortOrder;
+        cat.status = status;
+        cat.image = image;
+        cat.notes = notes;
+        // 如果名称变更，更新所有产品的分类引用
+        if (name !== oldName) {
+            const products = loadData('products');
+            products.forEach(p => { if (p.category === oldName) p.category = name; });
+            saveData('products', products);
+            // also update promotion applicableProducts
+            const promos = loadData('promotions');
+            let promoChanged = false;
+            promos.forEach(p => {
+                if (Array.isArray(p.applicableProducts) && p.applicableProducts.includes(oldName)) {
+                    p.applicableProducts = p.applicableProducts.map(ap => ap === oldName ? name : ap);
+                    promoChanged = true;
+                }
+            });
+            if (promoChanged) saveData('promotions', promos);
+        }
     } else {
-        if(cats.includes(name)) { alert('分类已存在'); return; }
-        cats.push(name);
+        // 新增分类
+        if (cats.some(c => c.name === name)) { alert('分类名称已存在'); return; }
+        const newId = cats.length ? Math.max(...cats.map(c => c.id)) + 1 : 1;
+        cats.push({id: newId, name, parentId, sortOrder, status, image, notes});
     }
     saveData('categories', cats);
     closeModal();
     navigateTo('category');
-    addLog(`分类操作: ${oldName?'编辑':'新增'} ${name}`);
+    addLog(`分类操作: ${id?'编辑':'新增'} ${name}`);
     showToast('分类已保存');
 }
-function deleteCategory(c) {
-    if(!confirm(`确定删除分类"${c.name}"吗？该分类下的商品将变为未分类。`)) return;
+
+function getAllDescendantIds(catId, cats) {
+    const result = [];
+    const children = cats.filter(c => c.parentId === catId);
+    children.forEach(c => {
+        result.push(c.id);
+        result.push(...getAllDescendantIds(c.id, cats));
+    });
+    return result;
+}
+
+function deleteCategory(catId) {
+    const cat = getCategoryById(catId);
+    if (!cat) { alert('分类不存在'); return; }
+    const childCount = loadData('categories').filter(c => c.parentId === catId).length;
+    const warnMsg = childCount > 0
+        ? `"${cat.name}"下有 ${childCount} 个子分类，删除后它们将变为顶级分类。确定删除吗？`
+        : `确定删除分类"${cat.name}"吗？该分类下的商品将变为"未分类"。`;
+    if (!confirm(warnMsg)) return;
+
     let cats = loadData('categories');
-    cats = cats.filter(x=>x!==c.name);
+    if (typeof cats[0] === 'string') {
+        cats = cats.filter(x => x !== cat.name);
+    } else {
+        // 子分类提升为顶级
+        cats.forEach(c => { if (c.parentId === cat.id) c.parentId = null; });
+        cats = cats.filter(c => c.id !== cat.id);
+    }
     saveData('categories', cats);
     const products = loadData('products');
-    products.forEach(p => { if(p.category===c.name) p.category = '未分类'; });
+    products.forEach(p => { if (p.category === cat.name) p.category = '未分类'; });
     saveData('products', products);
     navigateTo('category');
-    addLog(`删除分类: ${c.name}`);
+    addLog(`删除分类: ${cat.name}`);
     showToast('已删除');
+}
+
+function deleteCategoryFromEdit(catId) {
+    closeModal();
+    setTimeout(() => deleteCategory(catId), 200);
+}
+
+function toggleCategoryStatus(catId) {
+    let cats = loadData('categories');
+    if (typeof cats[0] === 'string') return;
+    const cat = cats.find(c => String(c.id) === String(catId));
+    if (!cat) return;
+    cat.status = cat.status === '显示' ? '隐藏' : '显示';
+    saveData('categories', cats);
+    init_category();
+    addLog(`分类状态: ${cat.name} → ${cat.status}`);
+    showToast(`${cat.name} 已${cat.status}`);
+}
+
+function moveCategoryUp(catId) {
+    let cats = loadData('categories');
+    if (typeof cats[0] === 'string') return;
+    const cat = cats.find(c => String(c.id) === String(catId));
+    if (!cat) return;
+    const siblings = cats.filter(c => c.parentId === cat.parentId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+    const idx = siblings.findIndex(c => String(c.id) === String(catId));
+    if (idx <= 0) return;
+    const prev = siblings[idx - 1];
+    const tmp = cat.sortOrder;
+    cat.sortOrder = prev.sortOrder;
+    prev.sortOrder = tmp;
+    saveData('categories', cats);
+    init_category();
+}
+
+function moveCategoryDown(catId) {
+    let cats = loadData('categories');
+    if (typeof cats[0] === 'string') return;
+    const cat = cats.find(c => String(c.id) === String(catId));
+    if (!cat) return;
+    const siblings = cats.filter(c => c.parentId === cat.parentId).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+    const idx = siblings.findIndex(c => String(c.id) === String(catId));
+    if (idx < 0 || idx >= siblings.length - 1) return;
+    const next = siblings[idx + 1];
+    const tmp = cat.sortOrder;
+    cat.sortOrder = next.sortOrder;
+    next.sortOrder = tmp;
+    saveData('categories', cats);
+    init_category();
+}
+
+function viewCatProducts(catName) {
+    const products = loadData('products').filter(p => p.category === catName);
+    let html = `<div style="max-height:400px;overflow-y:auto;">`;
+    if (products.length === 0) {
+        html += '<p style="text-align:center;color:#819e73;padding:20px;">该分类下暂无商品</p>';
+    } else {
+        html += '<table class="data-table" style="min-width:500px;"><thead><tr><th>商品编号</th><th>名称</th><th>价格</th><th>库存</th><th>状态</th></tr></thead><tbody>';
+        products.forEach(p => {
+            html += `<tr><td>${p.code||''}</td><td>${p.name}</td><td>¥${formatMoney(p.retailPrice)}</td><td>${p.stock} ${p.unit||''}</td><td><span class="badge ${p.status==='上架'?'badge-on':'badge-off'}">${p.status}</span></td></tr>`;
+        });
+        html += '</tbody></table>';
+    }
+    html += '</div>';
+    openModal(`分类"${catName}"下的商品 (${products.length}件)`, html,
+        `<button class="btn btn-outline" onclick="closeModal()">关闭</button>
+         <button class="btn btn-outline" onclick="batchMoveFromCat('${catName.replace(/'/g,"\\'")}')">📦 批量转移这些商品</button>`);
+}
+
+function batchMoveFromCat(oldCat) {
+    closeModal();
+    setTimeout(() => batchMoveProducts(oldCat), 300);
+}
+
+function batchMoveProducts(fromCat) {
+    fromCat = fromCat || '';
+    const products = loadData('products');
+    const fromCats = [...new Set(products.map(p => p.category))].sort();
+    const toCats = getCategoryNames();
+    const fromOptions = fromCats.map(c => `<option value="${c.replace(/"/g,'&quot;')}" ${c===fromCat?'selected':''}>${c}</option>`).join('');
+    const toOptions = toCats.map(c => `<option value="${c.replace(/"/g,'&quot;')}">${c}</option>`).join('');
+    openModal('批量转移商品分类', `
+        <div class="form-field"><label>原分类</label><select id="batchFromCat">${fromOptions}</select></div>
+        <div class="form-field"><label>目标分类</label><select id="batchToCat">${toOptions}</select></div>
+        <p style="color:#819e73;font-size:0.75rem;margin-top:8px;">将原分类下的所有商品转移到目标分类。</p>
+    `, `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doBatchMoveProducts()">确认转移</button>`);
+}
+
+function doBatchMoveProducts() {
+    const from = document.getElementById('batchFromCat').value;
+    const to = document.getElementById('batchToCat').value;
+    if (!from || !to) { alert('请选择分类'); return; }
+    if (from === to) { alert('原分类和目标分类不能相同'); return; }
+    const products = loadData('products');
+    let count = 0;
+    products.forEach(p => {
+        if (p.category === from) { p.category = to; count++; }
+    });
+    if (count === 0) { alert(`"${from}"分类下没有商品`); return; }
+    saveData('products', products);
+    closeModal();
+    navigateTo('category');
+    addLog(`批量转移: ${count}件商品从 ${from} → ${to}`);
+    showToast(`已转移 ${count} 件商品`);
+}
+
+function showCatStats() {
+    const cats = buildCategoryFlatList();
+    const products = loadData('products');
+    let html = '<table class="data-table" style="min-width:600px;"><thead><tr><th>分类</th><th>状态</th><th>商品数</th><th>库存总量</th><th>总销售额</th></tr></thead><tbody>';
+    cats.forEach(c => {
+        const catProds = products.filter(p => p.category === c.name);
+        const totalStock = catProds.reduce((s,p) => s + (p.stock||0), 0);
+        const totalSales = catProds.reduce((s,p) => s + (p.sales||0), 0);
+        html += `<tr>
+            <td>${c.name}</td>
+            <td>${c.status==='显示'?'<span class="badge badge-on">显示</span>':'<span class="badge badge-off">隐藏</span>'}</td>
+            <td style="font-weight:600;">${catProds.length}</td>
+            <td>${totalStock}</td>
+            <td>${totalSales}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    openModal('📊 分类统计', html, `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
+}
+
+function exportCategories() {
+    const cats = buildCategoryFlatList();
+    let csv = 'ID,名称,上级分类ID,排序,状态,图片,备注\n';
+    cats.forEach(c => {
+        csv += `${c.id},"${c.name}",${c.parentId||''},${c.sortOrder},${c.status},"${c.image||''}","${(c.notes||'').replace(/"/g,'""')}"\n`;
+    });
+    const blob = new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'categories_' + getToday() + '.csv';
+    a.click();
+    showToast('分类数据已导出');
+}
+
+function importCategoriesPrompt() {
+    openModal('导入分类', `
+        <p style="margin-bottom:12px;color:#5e7a5a;">请选择CSV文件（ID,名称,上级分类ID,排序,状态,图片,备注）</p>
+        <input type="file" id="importCatFile" accept=".csv">
+        <p style="margin-top:8px;font-size:0.7rem;color:#819e73;">提示：不填ID则自动生成，状态填"显示"或"隐藏"</p>
+    `, `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doImportCategories()">导入</button>`);
+}
+
+function doImportCategories() {
+    const file = document.getElementById('importCatFile').files[0];
+    if (!file) { alert('请选择文件'); return; }
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split('\n').filter(l => l.trim());
+        if (lines.length < 2) { alert('文件格式不正确'); return; }
+        let cats = loadData('categories');
+        if (cats.length > 0 && typeof cats[0] === 'string') {
+            cats = cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}));
+        }
+        const maxId = cats.length ? Math.max(...cats.map(c => c.id)) : 0;
+        let importCount = 0;
+        for (let i = 1; i < lines.length; i++) {
+            const cols = parseCSVLine(lines[i]);
+            if (cols.length < 2) continue;
+            const name = (cols[1]||'').trim();
+            if (!name) continue;
+            const id = parseInt(cols[0]) || (maxId + importCount + 1);
+            const parentId = cols[2] ? parseInt(cols[2]) : null;
+            const sortOrder = parseInt(cols[3]) || 0;
+            const status = (cols[4]||'显示').trim();
+            const image = (cols[5]||'').trim();
+            const notes = (cols[6]||'').trim();
+            if (!cats.some(c => String(c.id) === String(id))) {
+                cats.push({id, name, parentId, sortOrder, status, image, notes});
+                importCount++;
+            }
+        }
+        saveData('categories', cats);
+        closeModal();
+        navigateTo('category');
+        addLog(`导入分类: ${importCount}条`);
+        showToast(`成功导入 ${importCount} 条分类`);
+    };
+    reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (const ch of line) {
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+        else { current += ch; }
+    }
+    result.push(current);
+    return result;
 }
 
 // -- 商品库存管理 (商品管理员：库存监控与分析) --
