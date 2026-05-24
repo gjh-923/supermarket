@@ -1037,9 +1037,19 @@ function recalcAllMemberStats() {
         var calcCumPts = memberRecords.reduce(function(s, r) {
             return s + (r.points > 0 ? r.points : 0);
         }, 0);
+        // 确保累计积分 >= 累计消费（1元=1积分）
         if (calcCumPts < Math.floor(m.totalSpent || 0)) calcCumPts = Math.floor(m.totalSpent || 0);
         if ((m.cumulativePoints || 0) !== calcCumPts) {
             m.cumulativePoints = calcCumPts;
+            changed = true;
+        }
+        // 现有积分 = 累计积分 - 已兑换 - 已清零 - 退货扣回 - 调整减少
+        var totalDebits = memberRecords.reduce(function(s, r) {
+            return s + (r.points < 0 ? Math.abs(r.points) : 0);
+        }, 0);
+        var calcPoints = Math.max(0, calcCumPts - totalDebits);
+        if ((m.points || 0) !== calcPoints) {
+            m.points = calcPoints;
             changed = true;
         }
     });
@@ -3316,8 +3326,7 @@ function localReturnOrder(o) {
         if (m) {
             m.totalSpent = Math.max(0, (m.totalSpent||0) - o.totalAmount);
             const lvl = loadData('memberLevels').find(l=>l.name===m.level);
-            const rate = lvl ? lvl.pointsRate : 1;
-            const lostPoints = Math.floor(o.totalAmount * rate);
+            const lostPoints = Math.floor(o.totalAmount);
             m.points = Math.max(0, (m.points||0) - lostPoints);
             // cumulativePoints 不减少，它是终身累积值
             // 降级检查
