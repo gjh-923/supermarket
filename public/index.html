@@ -2030,11 +2030,17 @@ function renderCatFlatTable(list) {
         html += '<td>' + statusBadge + '</td>';
         html += '<td style="text-align:center;"><a href="javascript:void(0)" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" style="font-weight:600;color:#2a7a3b;text-decoration:underline;" title="查看该分类下的商品">' + count + ' 件</a></td>';
         html += '<td style="white-space:nowrap;">';
-        html += '<button class="btn btn-sm btn-outline" onclick="editCategory(' + c.id + ')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button>';
-        html += '<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(' + c.id + ')" title="上移排序" style="font-size:0.7rem;padding:3px 8px;">上移</button>';
-        html += '<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(' + c.id + ')" title="下移排序" style="font-size:0.7rem;padding:3px 8px;">下移</button>';
-        html += '<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(' + c.id + ')" title="' + (c.status==='显示'?'点击隐藏':'点击显示') + '" style="font-size:0.7rem;padding:3px 8px;">' + (c.status==='显示'?'隐藏':'显示') + '</button>';
-        html += '<button class="btn btn-sm btn-outline" onclick="deleteCategory(' + c.id + ')" title="删除此分类" style="font-size:0.7rem;padding:3px 8px;color:#c23d2e;">删除</button>';
+        html += '<button class="btn btn-sm btn-primary" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" title="查看该分类下的商品" style="font-size:0.7rem;padding:3px 8px;">查看商品</button> ';
+        html += '<button class="btn btn-sm btn-outline" onclick="editCategory(' + c.id + ')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button> ';
+        html += '<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(' + c.id + ')" title="' + (c.status==='显示'?'点击隐藏':'点击显示') + '" style="font-size:0.7rem;padding:3px 8px;">' + (c.status==='显示'?'隐藏':'显示') + '</button> ';
+        html += '<div style="display:inline-block;position:relative;">';
+        html += '<button class="btn btn-sm btn-outline" onclick="toggleCatMoreMenu(event,' + c.id + ')" style="font-size:0.7rem;padding:3px 8px;">更多 ▾</button>';
+        html += '<div id="catMoreMenu_' + c.id + '" style="display:none;position:absolute;right:0;top:100%;z-index:200;background:#fff;border:1px solid #dde6d4;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.12);min-width:110px;margin-top:2px;">';
+        html += '<a href="javascript:void(0)" onclick="moveCategoryUp(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↑ 上移</a>';
+        html += '<a href="javascript:void(0)" onclick="moveCategoryDown(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↓ 下移</a>';
+        html += '<div style="border-top:1px solid #dde6d4;margin:0;"></div>';
+        html += '<a href="javascript:void(0)" onclick="deleteCategory(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#c23d2e;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#fff0f0\'" onmouseout="this.style.background=\'#fff\'">删除</a>';
+        html += '</div></div>';
         html += '</td></tr>';
     }
     if (visibleIdx === 0) html += '<tr><td colspan="5" style="text-align:center;padding:50px;color:#819e73;">没有匹配的分类数据</td></tr>';
@@ -2042,31 +2048,61 @@ function renderCatFlatTable(list) {
     return html;
 }
 
+var _openCatMoreMenu = null;
+
+function toggleCatMoreMenu(e, catId) {
+    e.stopPropagation();
+    var menu = document.getElementById('catMoreMenu_' + catId);
+    if (!menu) return;
+    if (_openCatMoreMenu && _openCatMoreMenu !== menu) {
+        _openCatMoreMenu.style.display = 'none';
+    }
+    if (menu.style.display === 'block') {
+        menu.style.display = 'none';
+        _openCatMoreMenu = null;
+    } else {
+        menu.style.display = 'block';
+        _openCatMoreMenu = menu;
+    }
+}
+
+function closeCatMoreMenu(catId) {
+    var menu = document.getElementById('catMoreMenu_' + catId);
+    if (menu) { menu.style.display = 'none'; }
+    if (_openCatMoreMenu === menu) { _openCatMoreMenu = null; }
+}
+
+document.addEventListener('click', function() {
+    if (_openCatMoreMenu) {
+        _openCatMoreMenu.style.display = 'none';
+        _openCatMoreMenu = null;
+    }
+});
+
 var _catFlatList = [];
-var _catListLastJSON = ''; // 用于检测数据是否变化，避免不必要的重渲染
+var _catListLastJSON = '';
+
+function _catRenderTable(force) {
+    var newList = buildCategoryFlatList();
+    var newJSON = JSON.stringify(newList);
+    if (!force && newJSON === _catListLastJSON) return; // 数据未变跳过
+    _catFlatList = newList;
+    _catListLastJSON = newJSON;
+    var container = document.getElementById('catListContainer');
+    if (container) {
+        container.innerHTML = renderCatFlatTable(_catFlatList);
+    }
+}
 
 function init_category() {
     _catFlatList = buildCategoryFlatList();
-    _catListLastJSON = JSON.stringify(_catFlatList);
-    refreshCurrentTable = function() {
-        // 从 localStorage 重新加载，但只在数据变化时重渲染（避免跳动）
-        var newList = buildCategoryFlatList();
-        var newJSON = JSON.stringify(newList);
-        if (newJSON === _catListLastJSON) return; // 数据未变，跳过
-        _catFlatList = newList;
-        _catListLastJSON = newJSON;
-        var container = document.getElementById('catListContainer');
-        if (container) {
-            container.innerHTML = renderCatFlatTable(_catFlatList);
-        }
-    };
-    refreshCurrentTable();
+    _catListLastJSON = '';
+    refreshCurrentTable = function() { _catRenderTable(false); };
+    _catRenderTable(true); // 强制渲染（操作刚修改了数据）
 }
 
 function filterCatList() {
-    // 搜索/筛选：从 localStorage 重新加载，无条件渲染（用户主动操作）
     _catFlatList = buildCategoryFlatList();
-    _catListLastJSON = JSON.stringify(_catFlatList);
     var container = document.getElementById('catListContainer');
     if (container) {
         container.innerHTML = renderCatFlatTable(_catFlatList);
@@ -2167,6 +2203,7 @@ function saveNewCategory() {
         for (var mi = 0; mi < cats.length; mi++) { if (cats[mi].id > maxId) maxId = cats[mi].id; }
         cats.push({id: maxId + 1, name: name, parentId: null, sortOrder: sortOrder, status: status, image: image, notes: notes});
     }
+    normalizeCategorySortOrders(cats);
     saveData('categories', cats);
     _syncCategoriesToServer();
     closeModal();
