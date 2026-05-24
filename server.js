@@ -118,6 +118,13 @@ function syncAffectedTablesToDataStore() {
     description: p.description, image: p.image_url
   }))));
 
+  // Categories
+  const categories = db.prepare('SELECT * FROM categories').all();
+  upsert.run('categories', JSON.stringify(categories.map(c => ({
+    id: c.id, name: c.name, sortOrder: c.sort, status: c.status,
+    image: c.image || '', notes: c.description || '', description: c.description || ''
+  }))));
+
   // SalesOrders
   const salesOrders = db.prepare('SELECT * FROM sales_orders ORDER BY id DESC').all();
   upsert.run('salesOrders', JSON.stringify(salesOrders.map(o => ({
@@ -423,6 +430,7 @@ app.delete('/api/members/:id', authMiddleware, (req, res) => {
     db.prepare('DELETE FROM members WHERE id = ?').run(req.params.id);
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `删除会员: ${member.name}`);
+    syncAffectedTablesToDataStore();
     res.json(okMsg('删除成功'));
   } catch (e) {
     res.json(err(e.message));
@@ -524,6 +532,7 @@ app.delete('/api/suppliers/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM suppliers WHERE id = ?').run(req.params.id);
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
     .run(req.user.name, `删除供应商: ${supplier.name}`);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 
@@ -553,6 +562,7 @@ app.put('/api/supplier-contracts/:id', authMiddleware, (req, res) => {
 
 app.delete('/api/supplier-contracts/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM supplier_contracts WHERE id = ?').run(req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 
@@ -1043,6 +1053,7 @@ app.put('/api/promotions/:id', authMiddleware, (req, res) => {
 
 app.delete('/api/promotions/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM promotions WHERE id = ?').run(req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 

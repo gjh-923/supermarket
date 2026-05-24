@@ -703,7 +703,7 @@ const ROLES = {
     member_admin: { name: '会员管理员', pages: ['dashboard','member','member_level','member_points','member_exchange'] },
     cashier: { name: '收银员', pages: ['dashboard','sales','sales_order','sales_stats','sales_ranking','member','member_points'] },
     purchaser: { name: '采购员', pages: ['dashboard','purchase_in','supplier','supplier_contract','supplier_evaluation','inventory'] },
-    warehouse: { name: '仓管员', pages: ['dashboard','purchase_in'] },
+    warehouse: { name: '仓管员', pages: ['dashboard','warehouse','inventory','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','purchase_in'] },
     inventory: { name: '库存管理员', pages: ['dashboard','inventory','warehouse','inventory_check','inventory_alert','shelve','inventory_writeoff','warehouse_zones','purchase_in'] },
     finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax'] },
 };
@@ -2260,7 +2260,7 @@ function deleteCategory(catId) {
         cats = newCats2;
     }
     saveData('categories', cats);
-    _syncCategoriesToServer();
+    _apiDeleteCategory(cat.name).catch(function(e) { console.warn('服务器删除分类失败:', e.message); });
     navigateTo('category');
     addLog('删除分类: ' + cat.name);
     showToast('已删除分类"' + cat.name + '"');
@@ -2854,6 +2854,7 @@ function deletePromotion(prom) {
     let promos = loadData('promotions');
     promos = promos.filter(x=>x.id!==prom.id);
     saveData('promotions', promos);
+    _apiDel('/api/promotions/' + prom.id).catch(function(e) { console.warn('服务器删除促销失败:', e.message); });
     navigateTo('promotion');
     addLog(`删除促销活动: ${prom.name}`);
     showToast('已删除');
@@ -4019,6 +4020,7 @@ function deleteMember(m) {
     let records = loadData('memberPointsRecords');
     records = records.filter(x=>x.memberId!==m.id);
     saveData('memberPointsRecords', records);
+    _apiDel('/api/members/' + m.id).catch(function(e) { console.warn('服务器删除会员失败:', e.message); });
     refreshCurrentTable();
     addLog(`删除会员: ${m.name}(${m.cardNo})`);
     showToast('已删除');
@@ -6983,6 +6985,7 @@ function deleteSupplier(s) {
     // 清空关联商品的供应商
     relatedProducts.forEach(p=>{p.supplier='';});
     saveData('products', products);
+    _apiDel('/api/suppliers/' + s.id).catch(function(e) { console.warn('服务器删除供应商失败:', e.message); });
     refreshCurrentTable();
     addLog(`删除供应商: ${s.name}(${s.code})`);
     showToast('已删除');
@@ -7196,6 +7199,7 @@ function deleteContract(c) {
     let contracts = loadData('supplierContracts');
     contracts = contracts.filter(x=>x.id!==c.id);
     saveData('supplierContracts', contracts);
+    _apiDel('/api/supplier-contracts/' + c.id).catch(function(e) { console.warn('服务器删除合同失败:', e.message); });
     syncContractSupplierStatus();
     refreshCurrentTable();
     updateContractStats();
