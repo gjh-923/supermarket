@@ -1103,13 +1103,14 @@ function syncProductCategories() {
         }
     });
     if (changed) saveData('categories', categories);
-    // 同时清理产品中的空分类（设为"未分类"）
+    // 将空分类的产品归入"未分类"，并确保该分类存在
     var productsChanged = false;
     products.forEach(function(p) {
         if (!p.category) { p.category = '未分类'; productsChanged = true; }
     });
-    // 确保"未分类"存在于分类表中
-    if (productsChanged || !existingNames.has('未分类')) {
+    if (productsChanged) {
+        // 只有产品确实需要"未分类"时才创建
+        existingNames = new Set(categories.map(function(c) { return typeof c === 'string' ? c : c.name; }));
         if (!existingNames.has('未分类')) {
             var maxId2 = categories.reduce(function(m, c) { return Math.max(m, (typeof c === 'string' ? 0 : c.id) || 0); }, 0);
             categories.push({
@@ -1117,10 +1118,10 @@ function syncProductCategories() {
                 status: '显示', description: '自动生成',
                 createdAt: new Date().toISOString()
             });
+            saveData('categories', categories);
         }
-        saveData('categories', categories);
+        saveData('products', products);
     }
-    if (productsChanged) saveData('products', products);
 }
 function deduplicateCategories() {
     // 按名称去重：保留第一个（通常是本地最早创建的），删除后续同名的
@@ -1169,6 +1170,14 @@ function migrateData() {
     deduplicateMembers();
     // 数据修复：从订单重建所有会员的 totalSpent、lastConsumeDate、cumulativePoints（独立加载保存，不会被覆盖）
     recalcAllMemberStats();
+    // 迁移旧格式分类（字符串数组 → 对象数组）
+    var cats = loadData('categories');
+    if (cats.length > 0 && typeof cats[0] === 'string') {
+        var newCats = cats.map(function(c, i) {
+            return {id: i+1, name: c, sortOrder: i+1, status: '显示', image: '', notes: ''};
+        });
+        saveData('categories', newCats);
+    }
     // 同步商品分类：将产品中的独有分类补充到 categories 表
     syncProductCategories();
 
@@ -1857,22 +1866,22 @@ async function saveProduct() {
     if(!name||!code) { alert('商品名称和编号不能为空'); return; }
     const products = loadData('products');
     const existingImage = id ? (products.find(p=>p.id==id)?.image||'') : '';
-    // Try to upload new image file to server, fallback to base64
+    // 优先使用base64本地存储（随数据同步持久化），服务器文件可能因重启丢失
     let imageValue = existingImage;
     const fileInput = document.getElementById('frmImage');
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-        try {
-            if (_apiToken) {
-                imageValue = await _apiUploadProductImage(fileInput.files[0]);
-            } else {
-                throw new Error('未登录API');
-            }
-        } catch(e) {
-            console.warn('图片上传失败，使用本地base64:', e.message);
-            imageValue = document.getElementById('frmImageData').value || existingImage;
+    const base64data = document.getElementById('frmImageData').value;
+    if (base64data && base64data !== existingImage) {
+        // 用户选了新图片，使用base64数据URL（持久化在数据中）
+        imageValue = base64data;
+        // 后台尝试上传到服务器（仅作加速引用，不影响数据完整性）
+        if (_apiToken && fileInput && fileInput.files && fileInput.files[0]) {
+            _apiUploadProductImage(fileInput.files[0]).then(function(url) {
+                // 上传成功后更新imageUrl字段用于服务器引用
+            }).catch(function() {});
         }
-    } else {
-        imageValue = document.getElementById('frmImageData').value || existingImage;
+    } else if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+        // 没有选新文件，保持现有图片
+        imageValue = existingImage;
     }
     const data = {
         id: id ? parseInt(id) : (products.length?Math.max(...products.map(p=>p.id))+1:1),
@@ -1955,7 +1964,8 @@ function getCategoryProductCount(catName) {
 
 // -- 商品分类管理 --
 pageRenderers['category'] = function() {
-    var flat = buildCategoryFlatList();
+    _catFlatList = buildCategoryFlatList();
+    var flat = _catFlatList;
     var totalProducts = loadData('products').length;
     var totalCats = flat.length;
     var hiddenCats = 0;
@@ -1984,7 +1994,7 @@ pageRenderers['category'] = function() {
                 </span>
             </div>
             <div class="table-wrap" id="catListContainer">
-                ${renderCatFlatTable(_catFlatList)}
+                ${renderCatFlatTable(flat)}
             </div>
         </div>
     </div>`;
@@ -2056,6 +2066,8 @@ function init_category() {
 }
 
 function filterCatList() {
+    // 搜索/筛选时从 localStorage 重新加载（确保数据最新）
+    _catFlatList = buildCategoryFlatList();
     var container = document.getElementById('catListContainer');
     if (container) {
         container.innerHTML = renderCatFlatTable(_catFlatList);
