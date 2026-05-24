@@ -3217,8 +3217,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
             } else {
                 m.totalSpent = (m.totalSpent||0) + finalAmount;
                 const lvl = loadData('memberLevels').find(l=>l.name===m.level);
-                const rate = lvl ? lvl.pointsRate : 1;
-                const earnedPoints = Math.floor(finalAmount * rate);
+                const earnedPoints = Math.floor(finalAmount);
                 m.points = (m.points||0) + earnedPoints;
                 m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(finalAmount);
                 const levels = loadData('memberLevels');

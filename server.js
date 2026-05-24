@@ -820,7 +820,7 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
           }
         }
         // Give points for the purchase
-        const pointsEarned = Math.floor(totalAmount * (level ? level.points_rate : 1));
+        const pointsEarned = Math.floor(totalAmount);
         if (pointsEarned > 0) {
           db.prepare('UPDATE members SET points = points + ?, total_spent = total_spent + ?, cumulative_points = cumulative_points + ? WHERE id = ?')
             .run(pointsEarned, totalAmount, totalAmount, memberId);
