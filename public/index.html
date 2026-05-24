@@ -546,6 +546,7 @@ function _normalizeData(key, data) {
         data.forEach(o => {
             const obj = {...o};
             // Field name aliases: backend uses different names than frontend
+            if (!obj.orderNo && obj.order_no) obj.orderNo = obj.order_no;
             if (!obj.time && obj.orderDate) obj.time = obj.orderDate;
             if (!obj.cashier && obj.operator) obj.cashier = obj.operator;
             if (!obj.paymentMethod && obj.payMethod) obj.paymentMethod = obj.payMethod;
@@ -3796,15 +3797,15 @@ function init_sales_stats() {
     }).join('')}
     </tbody></table>`;
     document.getElementById('dailyTrendChart').insertAdjacentHTML('afterend', `<div style="margin-top:12px;max-height:200px;overflow-y:auto;" id="dailyTable">${dailyTableHtml}</div>`);
-    // Recent orders list - remove old one first
-    const oldRecentList = document.getElementById('recentOrdersList');
-    if (oldRecentList) oldRecentList.remove();
+    // Recent orders list - remove old wrapper entirely to prevent accumulation
+    const oldRecentCard = document.getElementById('recentOrdersCard');
+    if (oldRecentCard) oldRecentCard.remove();
     const recentOrders = [...normOrders].reverse().slice(0,20);
     const orderListHtml = recentOrders.length===0 ? '<p style="color:#819e73;text-align:center;padding:10px;">暂无订单</p>' :
         `<table class="data-table" style="min-width:100%;font-size:0.75rem;"><thead><tr><th>订单号</th><th>时间</th><th>商品</th><th>会员</th><th>金额</th><th>收银员</th><th>支付方式</th></tr></thead><tbody>
         ${recentOrders.map(o=>`<tr><td>${o.orderNo}</td><td>${o.time}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(o.items||[]).map(i=>i.name+'x'+i.qty).join(', ')}</td><td>${o.memberName||'非会员'}</td><td style="font-weight:600;color:#2a7a3b;">¥${formatMoney(o.totalAmount)}</td><td>${o.cashier}</td><td>${o.paymentMethod||'-'}</td></tr>`).join('')}
         </tbody></table>`;
-    document.getElementById('salesStatsCards').insertAdjacentHTML('afterend', `<div class="chart-box" style="margin-top:16px;"><h3>最近订单记录 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">(更新于 ${updateTime})</span></h3><div style="max-height:300px;overflow-y:auto;" id="recentOrdersList">${orderListHtml}</div></div>`);
+    document.getElementById('salesStatsCards').insertAdjacentHTML('afterend', `<div class="chart-box" style="margin-top:16px;" id="recentOrdersCard"><h3>最近订单记录 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">(更新于 ${updateTime})</span></h3><div style="max-height:300px;overflow-y:auto;">${orderListHtml}</div></div>`);
     };
     refreshCurrentTable();
 }
