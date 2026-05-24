@@ -548,7 +548,9 @@ function _normalizeData(key, data) {
         });
     }
     if (key === 'salesOrders') {
-        return data.map(o => {
+        const seen = new Map();
+        const deduped = [];
+        data.forEach(o => {
             const obj = {...o};
             // Field name aliases: backend uses different names than frontend
             if (!obj.time && obj.orderDate) obj.time = obj.orderDate;
@@ -559,8 +561,19 @@ function _normalizeData(key, data) {
                 try { obj.items = JSON.parse(obj.items); } catch(e) { obj.items = []; }
             }
             if (!Array.isArray(obj.items)) obj.items = [];
-            return obj;
+            // 按 orderNo 去重：保留信息更完整的版本
+            const key = obj.orderNo;
+            if (!key) { deduped.push(obj); return; }
+            const existing = seen.get(key);
+            if (!existing) { seen.set(key, obj); deduped.push(obj); }
+            else if ((obj.cashier || obj.paymentMethod) && !(existing.cashier || existing.paymentMethod)) {
+                // Replace with more complete version
+                const idx = deduped.indexOf(existing);
+                if (idx !== -1) deduped[idx] = obj;
+                seen.set(key, obj);
+            }
         });
+        return deduped;
     }
     if (key === 'purchaseOrders') {
         return data.map(o => {
@@ -3333,7 +3346,18 @@ function checkout() {
     _apiCheckout(cartForApi, posMember?.id||null, useCoupon, selectedCoupon, payMethod).then(async result => {
         console.log('API结算成功:', result.orderNo);
         showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
-        try { await _apiSyncAll(); } catch(e) { console.warn('同步失败:', e.message); }
+        // Download server data to get the new order and updated member/product data
+        let synced = false;
+        try { await _apiSyncAll(); synced = true; } catch(e) { console.warn('同步失败，2秒后重试:', e.message); }
+        if (!synced) {
+            // Retry once after a short delay
+            try { await new Promise(r => setTimeout(r, 2000)); await _apiSyncAll(); synced = true; } catch(e) { console.warn('重试同步仍失败:', e.message); }
+        }
+        if (!synced) {
+            // Server confirmed checkout success but sync failed — save locally to ensure data is visible
+            console.warn('同步持续失败，使用本地数据保存');
+            localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
+        }
     }).catch(async e => {
         console.warn('API结算失败，使用本地结算:', e.message);
         localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
@@ -6616,12 +6640,12 @@ pageRenderers['employee_salary'] = function() {
     return `<div class="page active">
         <div class="page-header"><div><h1>工资管理</h1><div class="breadcrumb">员工管理 / 薪酬核算</div></div></div>
         <div class="page-body">
-            ${monthSalaries.length > 0 ? `<div class="dashboard-grid" style="margin-bottom:16px;">
+            ${monthSalaries.length > 0 ? `<div id="salaryStatsArea"><div class="dashboard-grid" style="margin-bottom:16px;">
                 <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num">¥${formatMoney(totalPayroll)}</div><div class="stat-label">${thisMonth} 总薪酬</div></div>
                 <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">${monthSalaries.length}</div><div class="stat-label">发薪人数</div></div>
                 <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">¥${formatMoney(totalBase)}</div><div class="stat-label">基本工资合计</div></div>
                 <div class="stat-card"><div class="stat-icon">🔥</div><div class="stat-num" style="color:#2563eb;">¥${formatMoney(totalOT)}</div><div class="stat-label">加班费合计</div></div>
-            </div>` : ''}
+            </div></div>` : ''}
             <div class="action-bar">
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="autoCalcSalary()">自动计算本月工资</button>
@@ -6633,8 +6657,53 @@ pageRenderers['employee_salary'] = function() {
         </div>
     </div>`;
 };
+function renderSalaryContent() {
+    const container = document.getElementById('salaryCards');
+    if (!container) return;
+    const employees = loadData('employees');
+    const salaries = loadData('salaries');
+    const thisMonth = new Date().toISOString().slice(0,7);
+    const monthSalaries = salaries.filter(s=>s.salary_month===thisMonth);
+    const totalPayroll = monthSalaries.reduce((s,x)=>s+(x.total||0),0);
+    const totalBase = monthSalaries.reduce((s,x)=>s+(x.base_salary||0),0);
+    const totalOT = monthSalaries.reduce((s,x)=>s+(x.overtime_pay||0),0);
+    const totalBonus = monthSalaries.reduce((s,x)=>s+(x.bonus||0),0);
+    const totalDeduction = monthSalaries.reduce((s,x)=>s+(x.deduction||0),0);
+    // Update stat cards
+    const statArea = document.getElementById('salaryStatsArea');
+    if (statArea) {
+        if (monthSalaries.length > 0) {
+            statArea.innerHTML = `<div class="dashboard-grid" style="margin-bottom:16px;">
+                <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num">¥${formatMoney(totalPayroll)}</div><div class="stat-label">${thisMonth} 总薪酬</div></div>
+                <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num">${monthSalaries.length}</div><div class="stat-label">发薪人数</div></div>
+                <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num">¥${formatMoney(totalBase)}</div><div class="stat-label">基本工资合计</div></div>
+                <div class="stat-card"><div class="stat-icon">🔥</div><div class="stat-num" style="color:#2563eb;">¥${formatMoney(totalOT)}</div><div class="stat-label">加班费合计</div></div>
+            </div>`;
+        } else {
+            statArea.innerHTML = '';
+        }
+    }
+    // Update salary cards
+    if (monthSalaries.length === 0) {
+        container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:#819e73;">本月工资尚未计算，点击上方按钮自动生成</div>';
+    } else {
+        container.innerHTML = monthSalaries.map(s=>{
+            const emp = employees.find(e=>e.id===s.employee_id);
+            const empName = emp?.name||s.employee_name||'未知';
+            return `<div class="salary-card">
+                <div class="emp-name">${empName} <span style="font-size:0.65rem;color:#819e73;">${emp?.dept||''} ${emp?.position||''}</span></div>
+                <div class="salary-row"><span>基本底薪</span><span>¥${formatMoney(s.base_salary)}</span></div>
+                <div class="salary-row"><span>加班费 (${s.overtime_days||0}天)</span><span style="color:#2563eb;">+¥${formatMoney(s.overtime_pay)}</span></div>
+                <div class="salary-row"><span>奖金</span><span style="color:#3b9e5c;">+¥${formatMoney(s.bonus||0)}</span></div>
+                <div class="salary-row"><span>扣款 (迟${s.late_days||0}/早${s.early_days||0}/旷${s.absent_days||0})</span><span style="color:#c23d2e;">-¥${formatMoney(s.deduction)}</span></div>
+                <div class="salary-row"><span>出勤天数</span><span>${s.work_days||0}天</span></div>
+                <div class="salary-total">实发: ¥${formatMoney(s.total)}</div>
+            </div>`;
+        }).join('');
+    }
+}
 function init_employee_salary() {
-    refreshCurrentTable = () => { try { renderPage('employee_salary'); } catch(e) {} };
+    refreshCurrentTable = () => { try { renderSalaryContent(); } catch(e) {} };
 }
 function autoCalcSalary() {
     const employees = loadData('employees');
@@ -6662,7 +6731,7 @@ function autoCalcSalary() {
         });
     });
     saveData('salaries', salaries);
-    navigateTo('employee_salary');
+    renderSalaryContent();
     addLog(`自动计算工资: ${thisMonth}`);
     showToast(`${thisMonth} 工资已自动计算完成`);
 }
@@ -6701,7 +6770,7 @@ function saveManualSalary() {
     });
     saveData('salaries', salaries);
     closeModal();
-    navigateTo('employee_salary');
+    renderSalaryContent();
     addLog(`手动添加工资: ${emp?.name||''} ${month}`);
     showToast('工资记录已保存');
 }
