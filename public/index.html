@@ -1973,10 +1973,10 @@ pageRenderers['category'] = function() {
         <div class="page-header"><div><h1>商品分类管理</h1><div class="breadcrumb">商品管理 / 分类管理</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()}</div></div>
         <div class="page-body">
             <div class="dashboard-grid" style="margin-bottom:12px;">
-                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📂</div><div class="stat-num" style="font-size:1.1rem;">${totalCats}</div><div class="stat-label" style="font-size:0.65rem;">分类总数</div></div>
-                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📦</div><div class="stat-num" style="font-size:1.1rem;">${totalProducts}</div><div class="stat-label" style="font-size:0.65rem;">商品总数</div></div>
-                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">👁️</div><div class="stat-num" style="font-size:1.1rem;color:#2a7a3b;">${totalCats-hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">显示中</div></div>
-                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">🙈</div><div class="stat-num" style="font-size:1.1rem;color:#b87c1a;">${hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">已隐藏</div></div>
+                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📂</div><div class="stat-num" style="font-size:1.1rem;" id="catStatTotal">${totalCats}</div><div class="stat-label" style="font-size:0.65rem;">分类总数</div></div>
+                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📦</div><div class="stat-num" style="font-size:1.1rem;" id="catStatProducts">${totalProducts}</div><div class="stat-label" style="font-size:0.65rem;">商品总数</div></div>
+                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">👁️</div><div class="stat-num" style="font-size:1.1rem;color:#2a7a3b;" id="catStatVisible">${totalCats-hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">显示中</div></div>
+                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">🙈</div><div class="stat-num" style="font-size:1.1rem;color:#b87c1a;" id="catStatHidden">${hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">已隐藏</div></div>
             </div>
             <div class="action-bar" style="flex-wrap:wrap;gap:6px;">
                 <button class="btn btn-primary" onclick="addCategory()">＋ 新增分类</button>
@@ -2099,13 +2099,29 @@ function _catRenderTable(force) {
     if (container) {
         container.innerHTML = renderCatFlatTable(_catFlatList);
     }
+    _updateCatStats();
+}
+
+function _updateCatStats() {
+    var cats = loadData('categories');
+    var products = loadData('products');
+    var totalCats = cats.length;
+    var totalProducts = products.length;
+    var hiddenCats = 0;
+    for (var i = 0; i < cats.length; i++) { if (cats[i].status === '隐藏') hiddenCats++; }
+    var el;
+    el = document.getElementById('catStatTotal'); if (el) el.textContent = totalCats;
+    el = document.getElementById('catStatProducts'); if (el) el.textContent = totalProducts;
+    el = document.getElementById('catStatVisible'); if (el) el.textContent = totalCats - hiddenCats;
+    el = document.getElementById('catStatHidden'); if (el) el.textContent = hiddenCats;
 }
 
 function init_category() {
     _catFlatList = buildCategoryFlatList();
     _catListLastJSON = '';
     refreshCurrentTable = function() { _catRenderTable(false); };
-    _catRenderTable(true); // 强制渲染（操作刚修改了数据）
+    _catRenderTable(true);
+    _updateCatStats();
 }
 
 function filterCatList() {
@@ -2114,6 +2130,7 @@ function filterCatList() {
     if (container) {
         container.innerHTML = renderCatFlatTable(_catFlatList);
     }
+    _updateCatStats();
 }
 
 function addCategory() {
