@@ -512,6 +512,8 @@ function stopAutoSync() {
 }
 
 // Lightweight view refresh after sync — updates data without rebuilding DOM
+var _currentRefreshPage = null;
+
 function _refreshCurrentView() {
     if (!currentPage) return;
     // POS page: ONLY refresh product grid with latest prices/stock
@@ -520,11 +522,10 @@ function _refreshCurrentView() {
         try { renderPosProducts(document.getElementById('posSearch')?.value||''); } catch(e) {}
         return;
     }
-    // Data table pages: refresh the table data ONLY if they have refreshCurrentTable
-    if (typeof refreshCurrentTable === 'function') {
+    // Only call refreshCurrentTable if it was set for the CURRENT page
+    if (_currentRefreshPage === currentPage && typeof refreshCurrentTable === 'function') {
         try { refreshCurrentTable(); } catch(e) {}
     }
-    // NEVER call init_*() from auto-sync — those reset state and mutate data
 }
 
 function _normalizeData(key, data) {
@@ -1441,6 +1442,12 @@ function renderPage(page) {
         refreshCurrentTable = function() {}; // 重置，防止旧页面的刷新函数污染新页面
         const initFn = window['init_'+page];
         if (initFn) initFn();
+        // 如果页面渲染器重定向到了其他页面，也初始化目标页面
+        if (currentPage !== page) {
+            const redirectInit = window['init_'+currentPage];
+            if (redirectInit) redirectInit();
+        }
+        _currentRefreshPage = currentPage; // use final page (renderers may redirect)
         setTimeout(animateCounters, 80);
     } else {
         mainContent.innerHTML = `<div class="page active"><div class="page-header"><h1>${PAGE_NAMES[page]||page}</h1></div><div class="page-body"><p style="color:#819e73">模块开发中...</p></div></div>`;
@@ -5684,6 +5691,7 @@ function _finSelectModule(page, el) {
     panel.classList.add('fin-panel-enter');
     const initFn = window['init_' + page];
     if (typeof initFn === 'function') initFn();
+    _currentRefreshPage = currentPage;
 }
 function finParentPage(title, breadcrumb, children) {
     const childPages = children.map(c=>c.page);
