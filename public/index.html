@@ -5247,7 +5247,7 @@ pageRenderers['employee_schedule'] = function() {
             <td><span class="shift-tag shift-晚班">晚</span> <b>${counts['晚班']}</b></td>
             <td><span class="shift-tag shift-休息">休</span> <b>${counts['休息']}</b></td>
             <td style="min-width:100px;"><div style="display:flex;align-items:center;gap:4px;"><div style="flex:1;height:6px;background:#f0f4eb;border-radius:3px;overflow:hidden;"><div style="height:100%;width:${progressPct}%;background:${progressColor};border-radius:3px;"></div></div><span style="font-size:0.7rem;color:${progressColor};font-weight:600;">${progressPct}%</span></div></td>
-            <td><button class="btn btn-outline" style="font-size:0.7rem;padding:4px 12px;cursor:pointer;" data-eid="${emp.id}" data-ename="${(emp.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="var b=this;event.stopPropagation();viewEmpSchedule(b.getAttribute('data-eid'),b.getAttribute('data-ename'))">详情</button></td>
+            <td><button class="btn btn-outline" style="font-size:0.7rem;padding:4px 12px;cursor:pointer;" data-eid="${emp.id}" data-ename="${(emp.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" onclick="schDetailBtn(this)">详情</button></td>
         </tr>`;
     }).join('');
 
@@ -5403,6 +5403,11 @@ function openBatchSchedule() {
             <div style="display:flex;flex-wrap:wrap;gap:4px;max-height:150px;overflow-y:auto;">${empChecks}</div>
         </div>`,
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="applyBatchSchedule()">应用排班</button>`);
+}
+function schDetailBtn(el) {
+    var eid = el.getAttribute('data-eid');
+    var ename = el.getAttribute('data-ename');
+    viewEmpSchedule(eid, ename);
 }
 function viewEmpSchedule(empId, empName) {
     const now = new Date();
