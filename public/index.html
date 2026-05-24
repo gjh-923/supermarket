@@ -1055,11 +1055,12 @@ function migrateData() {
     members.forEach(m => {
         if (!('cumulativePoints' in m)) { m.cumulativePoints = m.points || 0; membersChanged = true; }
     });
-    // 数据修复：从订单和积分记录重建会员统计数据
-    membersChanged = recalcAllMemberStats() || membersChanged;
+    // 先保存字段迁移结果
     if (membersChanged) saveData('members', members);
     // 去重：移除卡号/手机号重复的会员记录
     deduplicateMembers();
+    // 数据修复：从订单重建所有会员的 totalSpent、lastConsumeDate、cumulativePoints（独立加载保存，不会被覆盖）
+    recalcAllMemberStats();
 
     // 迁移供应商数据：补充缺失字段
     let suppliers = loadData('suppliers');
