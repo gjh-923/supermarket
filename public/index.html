@@ -67,7 +67,8 @@
 
         .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #f5faf0; }
         .page { display: none; flex-direction: column; flex: 1; overflow: hidden; }
-        .page.active { display: flex; }
+        .page.active { display: flex; animation: pageFadeIn 0.15s ease-out; }
+        @keyframes pageFadeIn { from { opacity: 0.6; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
         .page-header { display: flex; justify-content: space-between; align-items: center; padding: 24px 32px 0; flex-shrink: 0; max-width: 1300px; width: 100%; margin: 0 auto; }
         .page-header h1 { font-size: 1.5rem; font-weight: 700; color: #1f3b2c; }
@@ -177,15 +178,14 @@
         .schedule-header button { font-size: 0.75rem; padding: 6px 12px; }
         .schedule-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .schedule-table th { padding: 6px 2px; text-align: center; font-size: 0.65rem; font-weight: 600; background: #f5faf0; }
-        .schedule-table td.sch-cell { border: 1px solid #edf3e7; padding: 3px 2px; height: 50px; cursor: pointer; transition: 0.15s; vertical-align: top; text-align: left; }
+        .schedule-table td.sch-cell { border: 1px solid #edf3e7; padding: 4px 3px; min-height: 70px; cursor: pointer; transition: 0.15s; vertical-align: top; text-align: left; }
         .schedule-table td.sch-cell:hover { background: #f0f7e8 !important; }
-        .schedule-table td.sch-empty { border: 1px solid #f7f9f5; background: #fafcfa; }
-        .sch-day { font-size: 0.7rem; font-weight: 600; color: #1f3b2c; margin-bottom: 1px; }
-        .sch-cell .shift-tag { font-size: 0.48rem; padding: 0px 3px; border-radius: 5px; margin: 0; display: inline-block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.2; }
+        .schedule-table td.sch-empty { border: 1px solid #edefe8; background: #eef0eb; }
+        .sch-day { font-size: 0.7rem; font-weight: 700; color: #1f3b2c; margin-bottom: 2px; text-align: right; }
+        .sch-cell .shift-tag { font-size: 0.6rem; padding: 1px 4px; border-radius: 6px; margin: 1px 0; display: block; line-height: 1.4; word-break: break-all; }
         .shift-早班 { background: #fff7db; color: #b87c1a; }
         .shift-中班 { background: #e3f2fd; color: #1565c0; }
         .shift-晚班 { background: #f3e5f5; color: #7b1fa2; }
-        .shift-休息 { background: #fce4e4; color: #c23d2e; }
         .shift-休息 { background: #fce4e4; color: #c23d2e; }
         .att-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
         .att-stat-card { background: white; border-radius: 16px; padding: 16px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.03); }
@@ -507,6 +507,14 @@ function _refreshCurrentView() {
 
 function _normalizeData(key, data) {
     if (!Array.isArray(data)) return data;
+    if (key === 'products') {
+        return data.map(p => {
+            const obj = {...p};
+            // Backward compatibility: server uses imageUrl, frontend uses image
+            if (!obj.image && obj.imageUrl) obj.image = obj.imageUrl;
+            return obj;
+        });
+    }
     if (key === 'categories') {
         return data.map(c => typeof c === 'string' ? c : (c && c.name ? c.name : String(c || '')));
     }
@@ -577,10 +585,12 @@ async function _apiCheckout(cart, memberId, useCoupon, selectedCoupon, payMethod
 }
 
 async function _apiSaveProduct(product) {
+    // Map frontend field names to server field names
+    const serverProduct = {...product, imageUrl: product.image || product.imageUrl || ''};
     if (product.id) {
-        return await _apiPut('/api/products/' + product.id, product);
+        return await _apiPut('/api/products/' + product.id, serverProduct);
     } else {
-        return await _apiPost('/api/products', product);
+        return await _apiPost('/api/products', serverProduct);
     }
 }
 
@@ -1196,10 +1206,13 @@ async function navigateTo(page) {
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
-    if (_apiToken && !_isSyncing) {
-        try { await _apiSyncAll(); } catch(e) {}
-    }
     renderPage(page);
+    // Background sync after rendering for snappy navigation
+    if (_apiToken && !_isSyncing) {
+        _apiSyncAll().then(() => {
+            if(typeof refreshCurrentTable === 'function') refreshCurrentTable();
+        }).catch(()=>{});
+    }
 }
 function cardLink(page, title) {
     return canAccess(page) ? `onclick="navigateTo('${page}')" style="cursor:pointer;" title="${title}"` : 'style="opacity:0.5;cursor:not-allowed;" title="无权限访问"';
@@ -1215,6 +1228,7 @@ function renderPage(page) {
     const fn = pageRenderers[page];
     if (fn) {
         mainContent.innerHTML = fn();
+        refreshCurrentTable = function() {}; // 重置，防止旧页面的刷新函数污染新页面
         const initFn = window['init_'+page];
         if (initFn) initFn();
         setTimeout(animateCounters, 80);
@@ -1625,11 +1639,30 @@ function editProduct(p) {
     openModal('编辑商品', getProductFormHTML(p), `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveProduct()">保存</button>`);
 }
 async function saveProduct() {
+    try {
     const id = document.getElementById('frmId').value;
     const name = document.getElementById('frmName').value.trim();
     const code = document.getElementById('frmCode').value.trim();
     if(!name||!code) { alert('商品名称和编号不能为空'); return; }
     const products = loadData('products');
+    const existingImage = id ? (products.find(p=>p.id==id)?.image||'') : '';
+    // Try to upload new image file to server, fallback to base64
+    let imageValue = existingImage;
+    const fileInput = document.getElementById('frmImage');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        try {
+            if (_apiToken) {
+                imageValue = await _apiUploadProductImage(fileInput.files[0]);
+            } else {
+                throw new Error('未登录API');
+            }
+        } catch(e) {
+            console.warn('图片上传失败，使用本地base64:', e.message);
+            imageValue = document.getElementById('frmImageData').value || existingImage;
+        }
+    } else {
+        imageValue = document.getElementById('frmImageData').value || existingImage;
+    }
     const data = {
         id: id ? parseInt(id) : (products.length?Math.max(...products.map(p=>p.id))+1:1),
         code, name,
@@ -1640,7 +1673,7 @@ async function saveProduct() {
         stock: parseInt(document.getElementById('frmStock').value)||0,
         unit: document.getElementById('frmUnit').value,
         description: document.getElementById('frmDesc').value,
-        image: document.getElementById('frmImageData').value || (id ? (products.find(p=>p.id==id)?.image||'') : ''),
+        image: imageValue,
         status: document.getElementById('frmStatus').value,
         produceDate: document.getElementById('frmProduceDate').value,
         expiryDate: document.getElementById('frmExpiryDate').value,
@@ -1651,11 +1684,12 @@ async function saveProduct() {
     else products.push(data);
     saveData('products', products);
     closeModal();
-    refreshCurrentTable();
+    if(typeof refreshCurrentTable === 'function') refreshCurrentTable();
     addLog(`商品操作: ${id?'编辑':'新增'} ${name}`);
     showToast(`商品"${name}"已保存`);
     // API 同步（后台）
     _apiSaveProduct(data).catch(e => console.warn('API保存商品失败:', e.message));
+    } catch(e) { console.error('保存商品失败:', e); alert('保存失败: '+e.message); }
 }
 function deleteProduct(p) {
     if(!confirm(`确定删除商品"${p.name}"吗？`)) return;
@@ -1762,44 +1796,13 @@ pageRenderers['inventory'] = function() {
     <div class="page active">
         <div class="page-header"><div><h1>商品库存管理</h1><div class="breadcrumb">商品管理 / 库存管理</div></div><div style="color:#819e73;font-size:0.8rem">商品管理员工作台 | 库存监控与预警</div></div>
         <div class="page-body">
-            <div class="dashboard-grid">
-                <div class="stat-card card-center fade-in"><div class="stat-icon">📦</div><div class="stat-num">${prods.length}</div><div class="stat-label">商品总数</div></div>
-                <div class="stat-card card-center fade-in"><div class="stat-icon">💰</div><div class="stat-num">¥${formatMoney(totalStockValue)}</div><div class="stat-label">库存总价值(成本)</div></div>
-                <div class="stat-card card-center fade-in"><div class="stat-icon">⚠️</div><div class="stat-num" style="color:${lowStockCount>0?'#c23d2e':'#2a7a3b'};">${lowStockCount}</div><div class="stat-label">低库存预警</div></div>
-                <div class="stat-card card-center fade-in"><div class="stat-icon">⏰</div><div class="stat-num" style="color:${nearExpiry>0?'#b87c1a':'#2a7a3b'};">${nearExpiry}</div><div class="stat-label">临期商品(30天)</div></div>
-                <div class="stat-card card-center fade-in"><div class="stat-icon">🚫</div><div class="stat-num" style="color:${zeroStock>0?'#c23d2e':'#819e73'};">${zeroStock}</div><div class="stat-label">零库存商品</div></div>
-                <div class="stat-card card-center fade-in"><div class="stat-icon">📋</div><div class="stat-num">${todayRecords}</div><div class="stat-label">今日流水记录</div></div>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
-                <div style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
-                    <h3 style="color:#c23d2e;margin-bottom:12px;font-size:0.9rem;">⚠️ 低库存预警 (库存<100)</h3>
-                    <div style="max-height:260px;overflow-y:auto;">
-                    ${prods.filter(p=>p.stock<100).sort((a,b)=>a.stock-b.stock).slice(0,8).map(p=>`
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f0f0;font-size:0.78rem;">
-                            <span>${p.name}</span>
-                            <span style="color:#c23d2e;font-weight:600;">${p.stock} ${p.unit}</span>
-                            <span style="color:#819e73;font-size:0.7rem;">${p.category}</span>
-                        </div>`).join('') || '<p style="color:#819e73;text-align:center;padding:16px;">✅ 所有商品库存充足</p>'}
-                    </div>
-                </div>
-                <div style="background:white;border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
-                    <h3 style="color:#b87c1a;margin-bottom:12px;font-size:0.9rem;">⏰ 临期商品追踪 (30天内)</h3>
-                    <div style="max-height:260px;overflow-y:auto;">
-                    ${prods.filter(p=>{
-                        if(!p.expiryDate) return false;
-                        const diff = Math.ceil((new Date(p.expiryDate)-new Date())/(1000*60*60*24));
-                        return diff>=0 && diff<=30;
-                    }).sort((a,b)=>new Date(a.expiryDate)-new Date(b.expiryDate)).slice(0,8).map(p=>{
-                        const diff = Math.ceil((new Date(p.expiryDate)-new Date())/(1000*60*60*24));
-                        const urgencyColor = diff<=7?'#c23d2e':diff<=14?'#b87c1a':'#819e73';
-                        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #fdf5e6;font-size:0.78rem;">
-                            <span>${p.name}</span>
-                            <span style="color:${urgencyColor};font-weight:600;">${diff}天后到期</span>
-                            <span style="color:#819e73;font-size:0.7rem;">库存${p.stock}${p.unit}</span>
-                        </div>`;
-                    }).join('') || '<p style="color:#819e73;text-align:center;padding:16px;">✅ 暂无临期商品</p>'}
-                    </div>
-                </div>
+            <div class="dashboard-grid" style="margin-bottom:8px;">
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">📦</div><div class="stat-num" style="font-size:1rem;">${prods.length}</div><div class="stat-label" style="font-size:0.6rem;">商品总数</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">💰</div><div class="stat-num" style="font-size:1rem;">¥${formatMoney(totalStockValue)}</div><div class="stat-label" style="font-size:0.6rem;">库存总价值</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">⚠️</div><div class="stat-num" style="font-size:1rem;color:${lowStockCount>0?'#c23d2e':'#2a7a3b'};">${lowStockCount}</div><div class="stat-label" style="font-size:0.6rem;">低库存预警</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">⏰</div><div class="stat-num" style="font-size:1rem;color:${nearExpiry>0?'#b87c1a':'#2a7a3b'};">${nearExpiry}</div><div class="stat-label" style="font-size:0.6rem;">临期商品(30天)</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">🚫</div><div class="stat-num" style="font-size:1rem;color:${zeroStock>0?'#c23d2e':'#819e73'};">${zeroStock}</div><div class="stat-label" style="font-size:0.6rem;">零库存商品</div></div>
+                <div class="stat-card card-center fade-in" style="padding:8px 6px;"><div class="stat-icon" style="font-size:1rem;">📋</div><div class="stat-num" style="font-size:1rem;">${todayRecords}</div><div class="stat-label" style="font-size:0.6rem;">今日流水记录</div></div>
             </div>
             <div class="action-bar">
                 <div class="btn-group">
@@ -1856,7 +1859,7 @@ function init_inventory() {
                  if(diff<=30) return '<span class="badge badge-warn">'+p.expiryDate+' ('+diff+'天)</span>';
                  return p.expiryDate;
              }},
-             {key:'id',render:p=>`<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();stockIn(loadData('products').find(x=>x.id===${p.id}))" title="入库" style="padding:3px 8px;font-size:0.7rem;">+入库</button> <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();stockOut(loadData('products').find(x=>x.id===${p.id}))" title="出库" style="padding:3px 8px;font-size:0.7rem;">-出库</button>`}],
+             {key:'id',render:p=>`<span style="font-size:0.65rem;color:#819e73;">仅查看</span>`}],
             [],
             (item,term)=>item.name.includes(term)||item.category.includes(term)||(item.code||'').includes(term)
         );
@@ -2124,16 +2127,17 @@ function isPromoActive(p) {
     e.setHours(23,59,59,999);
     return now >= s && now <= e;
 }
-function getActivePromosForProduct(productId) {
-    const promos = loadData('promotions');
+function getActivePromosForProduct(productId, promos) {
+    if (!promos) promos = loadData('promotions');
     return promos.filter(p => isPromoActive(p) && (p.productId === 'all' || String(p.productId) === String(productId)));
 }
 function getActivePromoPrice(product, qty, isMember) {
-    // Handle 2-arg call from sales POS: (productId, originalPrice)
+    // Handle 2-arg call from sales POS: (productId, originalPrice[, preloadedPromos])
     if (typeof product === 'number' || typeof product === 'string') {
         const productId = product;
         const originalPrice = qty;
-        const promos = getActivePromosForProduct(productId);
+        const preloadedPromos = Array.isArray(isMember) ? isMember : null;
+        const promos = getActivePromosForProduct(productId, preloadedPromos);
         if (promos.length === 0) return originalPrice;
         const promo = promos[0];
         switch (promo.type) {
@@ -2206,9 +2210,9 @@ function getActivePromoPrice(product, qty, isMember) {
     }
     return { finalPrice: Math.round(totalPrice * 100) / 100, promo, desc };
 }
-function getActivePromoSummary(product) {
+function getActivePromoSummary(product, preloadedPromos) {
     if (!product) return '';
-    const promos = getActivePromosForProduct(product.id);
+    const promos = getActivePromosForProduct(product.id, preloadedPromos);
     if (promos.length === 0) return '';
     const promo = promos[0];
     const desc = formatPromoDesc(promo);
@@ -2289,14 +2293,16 @@ function filterPosProducts() {
     renderPosProducts(document.getElementById('posSearch')?.value||'');
 }
 function renderPosProducts(filter='') {
-    let products = loadData('products').filter(p=>p.status==='上架'&&p.stock>0);
+    let products = loadData('products').filter(p=>p.status==='上架');
     if(filter) products = products.filter(p=>p.name.includes(filter)||p.code.includes(filter));
+    const promos = loadData('promotions');
     const grid = document.getElementById('posGrid');
     grid.innerHTML = products.map(p=>{
-        const promoPrice = getActivePromoPrice(p.id, p.retailPrice);
-        const promoSummary = getActivePromoSummary(p);
+        const promoPrice = getActivePromoPrice(p.id, p.retailPrice, promos);
+        const promoSummary = getActivePromoSummary(p, promos);
         const hasPromo = promoPrice !== p.retailPrice || promoSummary !== '';
-        const imgHtml = p.image ? `<div class="pos-item-img"><img src="${p.image}" alt="${p.name}" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=height:80px;display:flex;align-items:center;justify-content:center;color:#bfd6aa;font-size:1.5rem;>📷</div>';"></div>` : '<div class="pos-item-img" style="display:flex;align-items:center;justify-content:center;color:#bfd6aa;font-size:1.5rem;background:#f0f4eb;">📷</div>';
+        const imgSrc = p.image ? p.image.replace(/"/g,'&quot;') : '';
+        const imgHtml = imgSrc ? `<div class="pos-item-img"><img src="${imgSrc}" alt="${p.name.replace(/"/g,'&quot;')}" loading="lazy" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=height:80px;display:flex;align-items:center;justify-content:center;color:#bfd6aa;font-size:1.5rem;>📷</div>';"></div>` : '<div class="pos-item-img" style="display:flex;align-items:center;justify-content:center;color:#bfd6aa;font-size:1.5rem;background:#f0f4eb;">📷</div>';
         return `<div class="pos-item" onclick="addToCart(${p.id})">
             ${imgHtml}
             <div class="pos-item-name">${p.name}${promoSummary ? ' '+promoSummary : ''}</div>
@@ -2499,7 +2505,14 @@ function saveQuickMember() {
     addLog(`POS快速注册会员: ${member.name}(${member.phone})`);
     showToast(`会员"${member.name}"注册成功，卡号: ${member.cardNo}`);
 }
+let _checkoutInProgress = false;
+let _checkoutTimer = 0;
 function checkout() {
+    if(_checkoutInProgress){
+        // Auto-reset if stuck for more than 15 seconds
+        if(Date.now() - _checkoutTimer > 15000) { _checkoutInProgress = false; }
+        else { showToast('结算进行中，请稍候...'); return; }
+    }
     if(posCart.length===0) { showToast('购物车为空'); return; }
     const payMethod = document.getElementById('posPayMethod')?.value||'微信';
     // 代金券：通过复选框独立选择是否使用
@@ -2565,13 +2578,16 @@ function checkout() {
         productId: item.productId, productCode: item.productCode,
         name: item.name, price: item.price, qty: item.qty
     }));
+    _checkoutInProgress = true;
+    _checkoutTimer = Date.now();
     _apiCheckout(cartForApi, posMember?.id||null, useCoupon, selectedCoupon, payMethod).then(async result => {
         console.log('API结算成功:', result.orderNo);
         showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
-        // 从 API 同步数据
-        try {
-            await _apiSyncAll();
-        } catch(e) { console.warn('同步失败:', e.message); }
+        try { await _apiSyncAll(); } catch(e) { console.warn('同步失败:', e.message); }
+    }).catch(async e => {
+        console.warn('API结算失败，使用本地结算:', e.message);
+        localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
+    }).finally(() => {
         posCart = [];
         posMember = null;
         const phoneInput = document.getElementById('posMemberPhone');
@@ -2580,10 +2596,7 @@ function checkout() {
         resetCouponSelection();
         renderCart();
         renderPosProducts();
-    }).catch(e => {
-        console.warn('API结算失败，使用本地结算:', e.message);
-        // 降级：本地处理
-        localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
+        _checkoutInProgress = false;
     });
 }
 
@@ -2596,9 +2609,18 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
         if(p) { p.stock -= item.qty; p.sales = (p.sales||0) + item.qty; }
     });
     saveData('products', products);
+    // 记录库存流水
+    const orderNo = 'SO'+Date.now();
+    const invRecords = loadData('inventoryRecords');
+    posCart.forEach(item => {
+        const p = products.find(x=>x.id===item.productId);
+        if(p) {
+            invRecords.push({id:makeId(), productId:item.productId, productName:item.name, type:'出库', qty:-item.qty, beforeStock:p.stock+item.qty, afterStock:p.stock, note:'POS销售 '+orderNo, time:new Date().toLocaleString(), operator:currentUser.name});
+        }
+    });
+    saveData('inventoryRecords', invRecords);
     // 保存订单
     const orders = loadData('salesOrders');
-    const orderNo = 'SO'+Date.now();
     orders.push({
         id: makeId(), orderNo, items: JSON.parse(JSON.stringify(posCart)),
         totalAmount: finalAmount, originalAmount: total, discountRate,
@@ -2612,7 +2634,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
     // 记录财务流水（收入）
     const ledger = loadData('financeLedger');
     ledger.push({
-        id: makeId(), date: getToday(), type: '收入', category: '销售收入',
+        id: makeId(), date: getToday(), type: '销售收入', category: '主营业务收入',
         amount: finalAmount, account: payMethod || '现金', summary: `POS销售 ${orderNo}`,
         voucherNo: orderNo
     });
@@ -2701,27 +2723,15 @@ function returnOrder(o) {
     if(!confirm(`确定退单 ${o.orderNo} (¥${formatMoney(o.totalAmount)}) 吗？库存将恢复。${memberNote}`)) return;
     // 尝试 API 退货
     const orderNo = o.orderNo;
-    fetch(API_BASE + '/api/sales-orders/' + encodeURIComponent(orderNo) + '/return', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken }
-    }).then(async res => {
-        const json = await res.json();
-        if (json.code === 0) {
-            console.log('API退货成功');
-            try { await _apiSyncAll(); } catch(e) {}
-        }
+    _apiRequest('POST', '/api/sales-orders/' + encodeURIComponent(orderNo) + '/return').then(async result => {
+        console.log('API退货成功:', result);
+        await _apiSyncAll().catch(()=>{});
+        showToast('退单成功，数据已同步');
+        if(typeof refreshCurrentTable === 'function') refreshCurrentTable();
     }).catch(e => {
         console.warn('API退货失败，使用本地处理:', e.message);
         localReturnOrder(o);
-    }).finally(() => {
-        if (!_apiAvailable) localReturnOrder(o);
     });
-    // 先尝试本地处理（如果 API 可用则 API 处理，本地作为即时反馈）
-    localReturnOrder(o);
-    // 如果 API 可用，重新同步
-    if (_apiToken) {
-        _apiSyncAll().then(() => { refreshCurrentTable(); }).catch(() => {});
-    }
 }
 
 function localReturnOrder(o) {
@@ -2731,6 +2741,15 @@ function localReturnOrder(o) {
         if(p) { p.stock += item.qty; p.sales = Math.max(0,(p.sales||0)-item.qty); }
     });
     saveData('products', products);
+    // 记录库存流水（退货入库）
+    const invRecords = loadData('inventoryRecords');
+    o.items.forEach(item => {
+        const p = products.find(x=>x.name===item.name);
+        if(p) {
+            invRecords.push({id:makeId(), productId:p.id, productName:item.name, type:'入库', qty:item.qty, beforeStock:p.stock-item.qty, afterStock:p.stock, note:'退单 '+o.orderNo, time:new Date().toLocaleString(), operator:currentUser.name});
+        }
+    });
+    saveData('inventoryRecords', invRecords);
     // 扣回会员消费和积分
     if (o.memberId) {
         const members = loadData('members');
@@ -2758,6 +2777,14 @@ function localReturnOrder(o) {
     let orders = loadData('salesOrders');
     orders = orders.filter(x=>x.id!==o.id);
     saveData('salesOrders', orders);
+    // 记录财务流水（退货冲红）
+    const ledger = loadData('financeLedger');
+    ledger.push({
+        id: makeId(), date: getToday(), type: '销售收入', category: '主营业务收入',
+        amount: -o.totalAmount, account: o.paymentMethod || '现金',
+        summary: `退单冲红 ${o.orderNo}`, voucherNo: o.orderNo
+    });
+    saveData('financeLedger', ledger);
     refreshCurrentTable();
     addLog(`退单: ${o.orderNo}, 金额 ¥${formatMoney(o.totalAmount)}${o.memberName?', 会员:'+o.memberName:''}`);
     showToast('退单成功，库存已恢复');
@@ -2824,11 +2851,15 @@ pageRenderers['sales_stats'] = function() {
     </div>`;
 };
 function init_sales_stats() {
+    refreshCurrentTable = () => {
     const orders = loadData('salesOrders');
     const normTime = t => {
         t = t || '';
         if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-        return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
+        if (/(\d{4})\/(\d{1,2})\/(\d{1,2})/.test(t)) return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
+        const m = t.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+        if (m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+        return t.slice(0, 10);
     };
     const normOrders = orders.map(o=>({...o, time: normTime(o.time)}));
     const today = getToday();
@@ -2906,6 +2937,8 @@ function init_sales_stats() {
         ${recentOrders.map(o=>`<tr><td>${o.orderNo}</td><td>${o.time}</td><td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(o.items||[]).map(i=>i.name+'x'+i.qty).join(', ')}</td><td>${o.memberName||'非会员'}</td><td style="font-weight:600;color:#2a7a3b;">¥${formatMoney(o.totalAmount)}</td><td>${o.cashier}</td><td>${o.paymentMethod||'-'}</td></tr>`).join('')}
         </tbody></table>`;
     document.getElementById('salesStatsCards').insertAdjacentHTML('afterend', `<div class="chart-box" style="margin-top:16px;"><h3>最近订单记录 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">(更新于 ${updateTime})</span></h3><div style="max-height:300px;overflow-y:auto;" id="recentOrdersList">${orderListHtml}</div></div>`);
+    };
+    refreshCurrentTable();
 }
 
 // -- 商品销售排行 --
@@ -2922,6 +2955,7 @@ pageRenderers['sales_ranking'] = function() {
     </div>`;
 };
 function init_sales_ranking() {
+    refreshCurrentTable = () => {
     const products = loadData('products');
     const orders = loadData('salesOrders');
     const salesMap = {};
@@ -2958,6 +2992,8 @@ function init_sales_ranking() {
             <span style="font-weight:600;color:#1f3b2c;">¥${formatMoney(p.salesAmount)}</span>
             <div class="rank-bar" style="width:80px;"><div class="rank-bar-fill" style="width:${Math.round(p.salesAmount/maxAmt*100)}%;"></div></div>
         </div>`).join('');
+    };
+    refreshCurrentTable();
 }
 
 // -- 会员管理 --
@@ -3132,9 +3168,14 @@ function saveMember() {
     const phone = document.getElementById('frmMemPhone').value.trim();
     if(!name||!phone) { alert('姓名和手机号不能为空'); return; }
     const isNew = !id;
+    const cardNo = document.getElementById('frmMemCardNo').value.trim();
+    if (cardNo) {
+        const dup = members.find(m => m.cardNo === cardNo && (!id || m.id !== parseInt(id)));
+        if (dup) { alert(`会员卡号"${cardNo}"已被"${dup.name}"使用，请使用其他卡号。`); return; }
+    }
     const data = {
         id: id ? parseInt(id) : (members.length?Math.max(...members.map(m=>m.id))+1:1),
-        cardNo: document.getElementById('frmMemCardNo').value.trim(),
+        cardNo,
         name, gender: document.getElementById('frmMemGender').value,
         birthday: document.getElementById('frmMemBirthday').value,
         phone, email: document.getElementById('frmMemEmail').value.trim(),
@@ -4031,9 +4072,9 @@ function init_inventory_alert() {
     refreshCurrentTable();
 }
 function handleAlert(a) {
-    if(a.alertType==='库存不足') stockIn(a);
-    else if(a.alertType==='库存过高') stockOut(a);
-    else writeOff(a);
+    // 仅查看商品详情，出/入库操作通过采购订单和销售收银完成
+    if(a.alertType==='临期预警' && a.expiryDate) { writeOff(a); }
+    else { viewProduct(a); }
 }
 function manageAlertSettings() {
     const settings = loadData('inventoryAlertSettings');
@@ -5075,14 +5116,12 @@ pageRenderers['employee_schedule'] = function() {
                 const isWeekend = col === 0 || col === 6;
                 const daySchedules = schedules.filter(s => s.date === dateStr);
                 let tagsHtml = '';
-                const maxShow = 3;
-                daySchedules.slice(0, maxShow).forEach(s => {
+                daySchedules.forEach(s => {
                     const emp = employees.find(e => e.id === s.employee_id);
                     const shiftName = s.shift || '休息';
                     const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
-                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name.slice(0, 2)}</span>`;
+                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name} ${shiftName}</span>`;
                 });
-                if (daySchedules.length > maxShow) tagsHtml += `<span class="shift-tag" style="background:#f0f4eb;color:#819e73;border:1px solid #ddd;font-weight:600;">+${daySchedules.length - maxShow}</span>`;
                 const tdStyle = isToday ? 'background:#e8f5e0;border:2px solid #4caf50;font-weight:700;' : isWeekend ? 'background:#fdfdf7;' : '';
                 cells += `<td class="sch-cell" onclick="openScheduleDay('${dateStr}')" style="${tdStyle}"><div class="sch-day">${d}${isToday ? '<span style="font-size:0.5rem;color:#4caf50;">今天</span>' : ''}</div>${tagsHtml}</td>`;
                 dayCount++;
@@ -5135,10 +5174,11 @@ pageRenderers['employee_schedule'] = function() {
                     <tbody>${calRows}</tbody>
                 </table>
             </div>
-            <div style="margin-top:8px;display:flex;gap:14px;font-size:0.7rem;color:#819e73;align-items:center;">
+            <div style="margin-top:10px;display:flex;gap:14px;font-size:0.72rem;color:#819e73;align-items:center;flex-wrap:wrap;">
                 <span><span class="shift-tag shift-早班">早</span> 早班</span><span><span class="shift-tag shift-中班">中</span> 中班</span><span><span class="shift-tag shift-晚班">晚</span> 晚班</span><span><span class="shift-tag shift-休息">休</span> 休息</span>
-                <span style="margin-left:auto;">📋 排班覆盖率: <b style="color:${coverageRate >= 80 ? '#2a7a3b' : coverageRate >= 50 ? '#b87c1a' : '#c23d2e'};">${coverageRate}%</b> | 点击日期格子排班</span>
+                <span style="margin-left:auto;">📋 排班覆盖率: <b style="color:${coverageRate >= 80 ? '#2a7a3b' : coverageRate >= 50 ? '#b87c1a' : '#c23d2e'};">${coverageRate}%</b></span>
             </div>
+            <div style="text-align:center;font-size:0.72rem;color:#819e73;margin-top:4px;">💡 点击任意日期格子进行排班</div>
             <div style="background:white;border-radius:20px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,0.04);margin-top:14px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
                     <h3 style="color:#1f3b2c;font-size:0.95rem;margin:0;">员工排班总览 <span style="font-weight:400;font-size:0.7rem;color:#819e73;">${employees.length}人 · ${daysInMonth}天</span></h3>
@@ -5437,7 +5477,9 @@ pageRenderers['employee_attendance'] = function() {
         </div>
     </div>`;
 };
-function init_employee_attendance() {}
+function init_employee_attendance() {
+    refreshCurrentTable = () => { try { renderPage('employee_attendance'); } catch(e) {} };
+}
 function changeAttMonth(delta) {
     const [y,m] = attMonth.split('-').map(Number);
     const d = new Date(y, m-1+delta, 1);
@@ -5987,13 +6029,7 @@ function init_supplier_contract() {
         if (currentContractStatusFilter !== '全部') {
             data = data.filter(c=>(c.status||'生效中')===currentContractStatusFilter);
         }
-        // Auto-update contract status based on current date
-        data.forEach(c => {
-            const diff = Math.ceil((new Date(c.expiryDate)-new Date())/(1000*60*60*24));
-            if (diff < 0) c.status = '已到期';
-            else if (diff <= 5) c.status = '即将到期';
-            else if (c.status === '即将到期' || c.status === '已到期') c.status = '生效中';
-        });
+        // Status updates are handled by migrateData() on page load, not during auto-refresh
         updateContractStats();
         renderTableData(data,
             [{key:'contractNo'},{key:'supplierName'},
@@ -6465,6 +6501,7 @@ function renderSysLoginLogTable(logs) {
 }
 function init_system_log_mgmt() {
     sysOpLogFilter = ''; sysLoginLogFilter = ''; sysOpLogPage = 1; sysLoginLogPage = 1;
+    refreshCurrentTable = () => { renderSysLogTabContent(); };
     renderSysLogTabContent();
 }
 // -- 数据备份与恢复(汇总) --
@@ -6576,6 +6613,7 @@ function renderSysBakTabContent() {
     }
 }
 function init_system_backup_mgmt() {
+    refreshCurrentTable = () => { renderSysBakTabContent(); };
     renderSysBakTabContent();
 }
 // -- 系统设置(汇总) --

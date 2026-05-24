@@ -74,7 +74,7 @@ function syncAffectedTablesToDataStore() {
     supplier: p.supplier, purchasePrice: p.purchase_price, retailPrice: p.retail_price,
     stock: p.stock, unit: p.unit, status: p.status, sales: p.sales,
     produceDate: p.produce_date, expiryDate: p.expiry_date,
-    description: p.description, imageUrl: p.image_url
+    description: p.description, image: p.image_url
   }))));
 
   // SalesOrders
@@ -82,7 +82,7 @@ function syncAffectedTablesToDataStore() {
   upsert.run('salesOrders', JSON.stringify(salesOrders.map(o => ({
     id: o.id, orderNo: o.order_no, memberId: o.member_id, memberName: o.member_name,
     memberPhone: o.member_phone, items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
-    totalAmount: o.total_amount, discountAmount: o.discount_amount, finalAmount: o.final_amount,
+    originalAmount: o.total_amount, totalAmount: o.final_amount, discountAmount: o.discount_amount,
     couponId: o.coupon_id, couponName: o.coupon_name, couponDiscount: o.coupon_discount,
     payMethod: o.pay_method, cashier: o.operator, time: o.order_date,
     paymentMethod: o.pay_method, orderDate: o.order_date, operator: o.operator
@@ -759,6 +759,16 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
       checkStock();
     } catch (e) {
       return res.json(err(e.message));
+    }
+
+    // Record inventory movements for each cart item
+    const insertInvRecord = db.prepare(`INSERT INTO inventory_records (product_id, product_name, type, qty, before_stock, after_stock, operator, note, time)
+      VALUES (?, ?, '出库', ?, ?, ?, ?, ?, datetime('now','localtime'))`);
+    for (const item of items) {
+      const product = getProduct.get(item.productId);
+      if (product) {
+        insertInvRecord.run(item.productId, item.name, -item.qty, product.stock + item.qty, product.stock, req.user.name, 'POS销售');
+      }
     }
 
     // Handle member & coupon
@@ -1487,9 +1497,27 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
     const rows = req.body.data;
     if (!Array.isArray(rows)) return res.json(err('数据格式错误，需为数组'));
 
-    // 直接存JSON，不转换字段名，保证数据原样存取
+    // ID-based merge: avoid overwriting server data with stale client data
+    const existing = db.prepare('SELECT data FROM data_store WHERE key = ?').get(storeKey);
+    let merged = rows;
+    if (existing && existing.data) {
+      try {
+        const existingRows = JSON.parse(existing.data);
+        if (Array.isArray(existingRows) && existingRows.length > 0 && rows.length > 0
+            && typeof rows[0] === 'object' && rows[0] !== null && 'id' in rows[0]
+            && typeof existingRows[0] === 'object' && existingRows[0] !== null && 'id' in existingRows[0]) {
+          const mergedMap = new Map(existingRows.map(r => [r.id, r]));
+          for (const row of rows) {
+            mergedMap.set(row.id, row); // client data overwrites same-ID server data
+          }
+          merged = Array.from(mergedMap.values());
+          merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+        }
+      } catch(e) { /* merge failed, use client data as-is */ }
+    }
+
     db.prepare('INSERT OR REPLACE INTO data_store (key, data) VALUES (?, ?)')
-      .run(storeKey, JSON.stringify(rows));
+      .run(storeKey, JSON.stringify(merged));
 
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `同步数据: ${storeKey} (${rows.length}条)`);
