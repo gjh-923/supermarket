@@ -541,7 +541,7 @@ function _normalizeData(key, data) {
         return data.map(c => {
             if (typeof c === 'string') {
                 // 旧格式字符串 → 对象
-                return {id: Date.now().toString(36)+Math.random().toString(36).slice(2,6), name: c, parentId: null, sortOrder: 0, status: '显示', image: '', notes: ''};
+                return {id: Date.now() + Math.floor(Math.random() * 1000), name: c, parentId: null, sortOrder: 0, status: '显示', image: '', notes: ''};
             }
             return {id: c.id, name: c.name, parentId: c.parentId||null, sortOrder: c.sortOrder||0, status: c.status||'显示', image: c.image||'', notes: c.notes||''};
         });
@@ -2038,15 +2038,15 @@ function renderCatFlatTable(list) {
         html += '<td style="text-align:center;">' + count + ' 件</td>';
         html += '<td style="white-space:nowrap;">';
         html += '<button class="btn btn-sm btn-primary" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" title="查看该分类下的商品" style="font-size:0.7rem;padding:3px 8px;">查看商品</button> ';
-        html += '<button class="btn btn-sm btn-outline" onclick="editCategory(' + c.id + ')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button> ';
-        html += '<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(' + c.id + ')" title="' + (c.status==='显示'?'点击隐藏':'点击显示') + '" style="font-size:0.7rem;padding:3px 8px;">' + (c.status==='显示'?'隐藏':'显示') + '</button> ';
+        html += '<button class="btn btn-sm btn-outline" onclick="editCategory(\'' + c.id + '\')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button> ';
+        html += '<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(\'' + c.id + '\')" title="' + (c.status==='显示'?'点击隐藏':'点击显示') + '" style="font-size:0.7rem;padding:3px 8px;">' + (c.status==='显示'?'隐藏':'显示') + '</button> ';
         html += '<div style="display:inline-block;position:relative;">';
-        html += '<button class="btn btn-sm btn-outline" onclick="toggleCatMoreMenu(event,' + c.id + ')" style="font-size:0.7rem;padding:3px 8px;">更多 ▾</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="toggleCatMoreMenu(event,\'' + c.id + '\')" style="font-size:0.7rem;padding:3px 8px;">更多 ▾</button>';
         html += '<div id="catMoreMenu_' + c.id + '" style="display:none;position:absolute;right:0;top:100%;z-index:200;background:#fff;border:1px solid #dde6d4;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.12);min-width:110px;margin-top:2px;">';
-        html += '<a href="javascript:void(0)" onclick="moveCategoryUp(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↑ 上移</a>';
-        html += '<a href="javascript:void(0)" onclick="moveCategoryDown(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↓ 下移</a>';
+        html += '<a href="javascript:void(0)" onclick="moveCategoryUp(\'' + c.id + '\');closeCatMoreMenu(\'' + c.id + '\');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↑ 上移</a>';
+        html += '<a href="javascript:void(0)" onclick="moveCategoryDown(\'' + c.id + '\');closeCatMoreMenu(\'' + c.id + '\');" style="display:block;padding:7px 14px;color:#333;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#f0f5eb\'" onmouseout="this.style.background=\'#fff\'">↓ 下移</a>';
         html += '<div style="border-top:1px solid #dde6d4;margin:0;"></div>';
-        html += '<a href="javascript:void(0)" onclick="deleteCategory(' + c.id + ');closeCatMoreMenu(' + c.id + ');" style="display:block;padding:7px 14px;color:#c23d2e;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#fff0f0\'" onmouseout="this.style.background=\'#fff\'">删除</a>';
+        html += '<a href="javascript:void(0)" onclick="deleteCategory(\'' + c.id + '\');closeCatMoreMenu(\'' + c.id + '\');" style="display:block;padding:7px 14px;color:#c23d2e;text-decoration:none;font-size:0.75rem;" onmouseover="this.style.background=\'#fff0f0\'" onmouseout="this.style.background=\'#fff\'">删除</a>';
         html += '</div></div>';
         html += '</td></tr>';
     }
