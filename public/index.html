@@ -1933,6 +1933,12 @@ function getCategoryNames() {
     if (typeof cats[0] === 'string') return cats; // 兼容旧格式
     return cats.filter(c => c.status !== '隐藏').sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0)).map(c => c.name);
 }
+function getHiddenCategoryNames() {
+    const cats = loadData('categories');
+    if (!cats.length) return [];
+    if (typeof cats[0] === 'string') return []; // 旧格式默认全部显示
+    return cats.filter(c => c.status === '隐藏').map(c => c.name);
+}
 function getCategoryByName(name) {
     const cats = loadData('categories');
     if (!cats.length) return null;
@@ -2024,11 +2030,12 @@ function renderCatFlatTable(list) {
         var noteIcon = c.notes
             ? ' <span title="' + c.notes.replace(/"/g,'&quot;') + '" style="cursor:help;font-size:0.7rem;opacity:0.6;">💬</span>'
             : '';
-        html += '<tr class="cat-row" data-cat-id="' + c.id + '">';
+        var rowStyle = c.status === '隐藏' ? ' style="opacity:0.45;"' : '';
+        html += '<tr class="cat-row" data-cat-id="' + c.id + '"' + rowStyle + '>';
         html += '<td>' + visibleIdx + '</td>';
         html += '<td>' + imgTag + '<strong>' + c.name + '</strong>' + noteIcon + '</td>';
         html += '<td>' + statusBadge + '</td>';
-        html += '<td style="text-align:center;"><a href="javascript:void(0)" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" style="font-weight:600;color:#2a7a3b;text-decoration:underline;" title="查看该分类下的商品">' + count + ' 件</a></td>';
+        html += '<td style="text-align:center;">' + count + ' 件</td>';
         html += '<td style="white-space:nowrap;">';
         html += '<button class="btn btn-sm btn-primary" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" title="查看该分类下的商品" style="font-size:0.7rem;padding:3px 8px;">查看商品</button> ';
         html += '<button class="btn btn-sm btn-outline" onclick="editCategory(' + c.id + ')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button> ';
@@ -2254,11 +2261,14 @@ function toggleCategoryStatus(catId) {
     for (var i = 0; i < cats.length; i++) { if (String(cats[i].id) === String(catId)) { cat = cats[i]; break; } }
     if (!cat) return;
     cat.status = cat.status === '显示' ? '隐藏' : '显示';
+    normalizeCategorySortOrders(cats);
     saveData('categories', cats);
     _syncCategoriesToServer();
     init_category();
+    // 保持当前筛选条件重新渲染
+    filterCatList();
     addLog('分类状态切换: ' + cat.name + ' → ' + cat.status);
-    showToast('"' + cat.name + '" 已设为' + cat.status);
+    showToast('"' + cat.name + '" 已设为' + cat.status + '（' + (cat.status==='隐藏'?'POS收银台不可见':'POS收银台可见') + '）');
 }
 
 function normalizeCategorySortOrders(cats) {
@@ -3006,7 +3016,8 @@ function filterPosProducts() {
     renderPosProducts(document.getElementById('posSearch')?.value||'');
 }
 function renderPosProducts(filter='') {
-    let products = loadData('products').filter(p=>p.status==='上架');
+    var hiddenCats = getHiddenCategoryNames();
+    let products = loadData('products').filter(p=>p.status==='上架' && hiddenCats.indexOf(p.category) === -1);
     if(filter) products = products.filter(p=>p.name.includes(filter)||p.code.includes(filter));
     const promos = loadData('promotions');
     const grid = document.getElementById('posGrid');
