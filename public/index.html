@@ -1247,6 +1247,7 @@ function canAccess(page) {
     return rolePages.includes(page);
 }
 function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; if (currentUser.role === 'product_admin') { var warehousePages = ['warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones']; if (warehousePages.indexOf(currentPage) !== -1) return false; } return true; }
+function canEditWarehouse() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'product_admin') return false; if (currentUser.role === 'inventory') return false; return true; }
 
 async function navigateTo(page) {
     if (!canAccess(page)) {
@@ -1837,15 +1838,11 @@ function getCategoryProductCount(catName) {
 
 // -- 商品分类管理 --
 pageRenderers['category'] = function() {
-    const flat = buildCategoryFlatList();
-    const totalProducts = loadData('products').length;
-    const totalCats = flat.length;
-    const hiddenCats = flat.filter(c => c.status === '隐藏').length;
-    const catsWithSub = flat.filter(c => {
-        const all = loadData('categories');
-        if (typeof all[0] === 'string') return false;
-        return all.some(cc => cc.parentId === c.id);
-    }).length;
+    var flat = buildCategoryFlatList();
+    var totalProducts = loadData('products').length;
+    var totalCats = flat.length;
+    var hiddenCats = 0;
+    for (var i = 0; i < flat.length; i++) { if (flat[i].status === '隐藏') hiddenCats++; }
     return `
     <div class="page active">
         <div class="page-header"><div><h1>商品分类管理</h1><div class="breadcrumb">商品管理 / 分类管理</div></div><div style="color:#819e73;font-size:0.8rem;">${getToday()}</div></div>
@@ -1853,8 +1850,8 @@ pageRenderers['category'] = function() {
             <div class="dashboard-grid" style="margin-bottom:12px;">
                 <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📂</div><div class="stat-num" style="font-size:1.1rem;">${totalCats}</div><div class="stat-label" style="font-size:0.65rem;">分类总数</div></div>
                 <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">📦</div><div class="stat-num" style="font-size:1.1rem;">${totalProducts}</div><div class="stat-label" style="font-size:0.65rem;">商品总数</div></div>
-                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">🌳</div><div class="stat-num" style="font-size:1.1rem;color:#b87c1a;">${catsWithSub}</div><div class="stat-label" style="font-size:0.65rem;">含子分类</div></div>
                 <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">👁️</div><div class="stat-num" style="font-size:1.1rem;color:#2a7a3b;">${totalCats-hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">显示中</div></div>
+                <div class="stat-card card-center fade-in" style="padding:10px 8px;"><div class="stat-icon" style="font-size:1.1rem;">🙈</div><div class="stat-num" style="font-size:1.1rem;color:#b87c1a;">${hiddenCats}</div><div class="stat-label" style="font-size:0.65rem;">已隐藏</div></div>
             </div>
             <div class="action-bar" style="flex-wrap:wrap;gap:6px;">
                 <button class="btn btn-primary" onclick="addCategory()">＋ 新增分类</button>
@@ -1863,172 +1860,93 @@ pageRenderers['category'] = function() {
                 <button class="btn btn-outline" onclick="exportCategories()">导出CSV</button>
                 <button class="btn btn-outline" onclick="importCategoriesPrompt()">导入CSV</button>
                 <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
-                    <input type="text" id="catSearchInput" placeholder="搜索分类名称..." oninput="filterCatTree()" style="padding:7px 12px;border-radius:10px;border:1.5px solid #dde6d4;width:180px;font-size:0.8rem;">
-                    <select id="catStatusFilter" onchange="filterCatTree()" style="padding:7px 10px;border-radius:10px;border:1.5px solid #dde6d4;font-size:0.8rem;">
+                    <input type="text" id="catSearchInput" placeholder="搜索分类名称..." oninput="filterCatList()" style="padding:7px 12px;border-radius:10px;border:1.5px solid #dde6d4;width:180px;font-size:0.8rem;">
+                    <select id="catStatusFilter" onchange="filterCatList()" style="padding:7px 10px;border-radius:10px;border:1.5px solid #dde6d4;font-size:0.8rem;">
                         <option value="全部">全部</option><option value="显示">显示中</option><option value="隐藏">已隐藏</option>
                     </select>
-                    <button class="btn btn-outline btn-sm" onclick="expandAllCats()" style="font-size:0.75rem;">展开全部</button>
-                    <button class="btn btn-outline btn-sm" onclick="collapseAllCats()" style="font-size:0.75rem;">收起全部</button>
                 </span>
             </div>
-            <div class="table-wrap" id="catTreeContainer">
-                ${renderCatTreeView(buildCategoryTree())}
+            <div class="table-wrap" id="catListContainer">
+                ${renderCatFlatTable(_catFlatList)}
             </div>
         </div>
     </div>`;
 };
 
 function buildCategoryFlatList() {
-    const cats = loadData('categories');
+    var cats = loadData('categories');
     if (!cats.length) return [];
-    if (typeof cats[0] === 'string') return cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}));
-    return [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+    if (typeof cats[0] === 'string') return cats.map(function(c,i) { return {id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}; });
+    var sorted = [];
+    for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
+    sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
+    return sorted;
 }
 
-function buildCategoryTree() {
-    const cats = loadData('categories');
-    if (!cats.length || typeof cats[0] === 'string') {
-        return cats.map((c,i) => ({id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:'', _children:[]}));
-    }
-    const sorted = [...cats].sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
-    const map = new Map();
-    const roots = [];
-    sorted.forEach(c => {
-        const node = {...c, _children: [], _expanded: true};
-        map.set(c.id, node);
-    });
-    sorted.forEach(c => {
-        const node = map.get(c.id);
-        if (c.parentId && map.has(c.parentId)) {
-            map.get(c.parentId)._children.push(node);
-        } else {
-            roots.push(node);
-        }
-    });
-    return roots;
-}
-
-function renderCatTreeView(tree) {
-    const flatList = flattenCatTreeWithMeta(tree);
-    const term = (document.getElementById('catSearchInput')?.value || '').trim().toLowerCase();
-    const statusFilter = document.getElementById('catStatusFilter')?.value || '全部';
-    let html = '<table class="data-table" style="min-width:900px;"><thead><tr>';
-    html += '<th style="width:45px;">序号</th><th>分类名称</th><th style="width:70px;">状态</th><th style="width:70px;">商品数</th><th style="width:210px;">操作</th>';
+function renderCatFlatTable(list) {
+    var term = (document.getElementById('catSearchInput') && document.getElementById('catSearchInput').value || '').trim().toLowerCase();
+    var statusFilter = (document.getElementById('catStatusFilter') && document.getElementById('catStatusFilter').value) || '全部';
+    var html = '<table class="data-table" style="min-width:900px;"><thead><tr>';
+    html += '<th style="width:45px;">序号</th><th>分类名称</th><th style="width:70px;">状态</th><th style="width:70px;">商品数</th><th style="width:260px;">操作</th>';
     html += '</tr></thead><tbody>';
-    let visibleIdx = 0;
-    flatList.forEach(c => {
-        const rowId = 'catrow_' + c.id;
-        if (term && !c.name.toLowerCase().includes(term)) return;
-        if (statusFilter !== '全部' && c.status !== statusFilter) return;
+    var visibleIdx = 0;
+    for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (term && c.name.toLowerCase().indexOf(term) === -1) continue;
+        if (statusFilter !== '全部' && c.status !== statusFilter) continue;
         visibleIdx++;
-        const count = getCategoryProductCount(c.name);
-        const statusBadge = c.status === '显示'
+        var count = getCategoryProductCount(c.name);
+        var statusBadge = c.status === '显示'
             ? '<span class="badge badge-on" style="font-size:0.7rem;">显示</span>'
             : '<span class="badge badge-off" style="font-size:0.7rem;">隐藏</span>';
-        const indentHtml = c._level > 0
-            ? `<span style="color:#c0d0b8;">${'│&nbsp;'.repeat(c._level-1)}├&nbsp;</span>`
+        var imgTag = c.image
+            ? '<img src="' + c.image + '" style="width:18px;height:18px;border-radius:3px;margin-right:4px;vertical-align:middle;object-fit:cover;">'
             : '';
-        const imgTag = c.image
-            ? `<img src="${c.image}" style="width:18px;height:18px;border-radius:3px;margin-right:4px;vertical-align:middle;object-fit:cover;">`
+        var noteIcon = c.notes
+            ? ' <span title="' + c.notes.replace(/"/g,'&quot;') + '" style="cursor:help;font-size:0.7rem;opacity:0.6;">💬</span>'
             : '';
-        const noteIcon = c.notes
-            ? ` <span title="${c.notes.replace(/"/g,'&quot;')}" style="cursor:help;font-size:0.7rem;opacity:0.6;" title="备注">💬</span>`
-            : '';
-        const hasChildren = c._children && c._children.length > 0;
-        const isExpanded = c._expanded !== false;
-        const toggleSymbol = hasChildren ? (isExpanded ? '[-]' : '[+]') : '';
-        const toggleStyle = hasChildren
-            ? 'cursor:pointer;color:#3b9e5c;font-weight:700;font-size:0.75rem;margin-right:4px;font-family:monospace;'
-            : 'display:inline-block;width:32px;';
-        html += `<tr class="cat-row" id="${rowId}" data-cat-id="${c.id}" data-parent="${c.parentId||''}" data-level="${c._level}">`;
-        html += `<td>${visibleIdx}</td>`;
-        html += `<td>${indentHtml}<span style="${toggleStyle}" onclick="toggleCatTreeNode(${c.id})">${toggleSymbol}</span>${imgTag}<strong>${c.name}</strong>${noteIcon}</td>`;
-        html += `<td>${statusBadge}</td>`;
-        html += `<td style="text-align:center;"><a href="javascript:void(0)" onclick="viewCatProducts('${c.name.replace(/'/g,"\\'")}')" style="font-weight:600;color:#2a7a3b;text-decoration:underline;" title="查看该分类下的商品">${count} 件</a></td>`;
-        html += `<td style="white-space:nowrap;">`;
-        html += `<button class="btn btn-sm btn-outline" onclick="editCategory(${c.id})" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="addSubCategory(${c.id})" title="在此分类下新增子分类" style="font-size:0.7rem;padding:3px 8px;">＋子分类</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(${c.id})" title="上移" style="font-size:0.7rem;padding:3px 8px;">上移</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(${c.id})" title="下移" style="font-size:0.7rem;padding:3px 8px;">下移</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(${c.id})" title="${c.status==='显示'?'点击隐藏':'点击显示'}" style="font-size:0.7rem;padding:3px 8px;">${c.status==='显示'?'隐藏':'显示'}</button>`;
-        html += `<button class="btn btn-sm btn-outline" onclick="deleteCategory(${c.id})" title="删除此分类" style="font-size:0.7rem;padding:3px 8px;color:#c23d2e;">删除</button>`;
-        html += `</td></tr>`;
-    });
+        html += '<tr class="cat-row" data-cat-id="' + c.id + '">';
+        html += '<td>' + visibleIdx + '</td>';
+        html += '<td>' + imgTag + '<strong>' + c.name + '</strong>' + noteIcon + '</td>';
+        html += '<td>' + statusBadge + '</td>';
+        html += '<td style="text-align:center;"><a href="javascript:void(0)" onclick="viewCatProducts(\'' + c.name.replace(/'/g,"\\'") + '\')" style="font-weight:600;color:#2a7a3b;text-decoration:underline;" title="查看该分类下的商品">' + count + ' 件</a></td>';
+        html += '<td style="white-space:nowrap;">';
+        html += '<button class="btn btn-sm btn-outline" onclick="editCategory(' + c.id + ')" title="编辑分类信息" style="font-size:0.7rem;padding:3px 8px;">编辑</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="moveCategoryUp(' + c.id + ')" title="上移排序" style="font-size:0.7rem;padding:3px 8px;">上移</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="moveCategoryDown(' + c.id + ')" title="下移排序" style="font-size:0.7rem;padding:3px 8px;">下移</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="toggleCategoryStatus(' + c.id + ')" title="' + (c.status==='显示'?'点击隐藏':'点击显示') + '" style="font-size:0.7rem;padding:3px 8px;">' + (c.status==='显示'?'隐藏':'显示') + '</button>';
+        html += '<button class="btn btn-sm btn-outline" onclick="deleteCategory(' + c.id + ')" title="删除此分类" style="font-size:0.7rem;padding:3px 8px;color:#c23d2e;">删除</button>';
+        html += '</td></tr>';
+    }
     if (visibleIdx === 0) html += '<tr><td colspan="5" style="text-align:center;padding:50px;color:#819e73;">没有匹配的分类数据</td></tr>';
     html += '</tbody></table>';
     return html;
 }
 
-function flattenCatTreeWithMeta(tree, level, parentId) {
-    level = level || 0;
-    let result = [];
-    tree.forEach(c => {
-        result.push({...c, _level: level});
-        if (c._children && c._children.length && c._expanded !== false) {
-            result = result.concat(flattenCatTreeWithMeta(c._children, level + 1, c.id));
-        }
-    });
-    return result;
-}
+var _catFlatList = [];
 
 function init_category() {
-    _catTreeData = buildCategoryTree();
-    refreshCurrentTable = () => {
-        const container = document.getElementById('catTreeContainer');
+    _catFlatList = buildCategoryFlatList();
+    refreshCurrentTable = function() {
+        var container = document.getElementById('catListContainer');
         if (container) {
-            container.innerHTML = renderCatTreeView(_catTreeData);
+            container.innerHTML = renderCatFlatTable(_catFlatList);
         }
     };
     refreshCurrentTable();
 }
 
-var _catTreeData = [];
-
-function filterCatTree() {
-    const container = document.getElementById('catTreeContainer');
+function filterCatList() {
+    var container = document.getElementById('catListContainer');
     if (container) {
-        container.innerHTML = renderCatTreeView(_catTreeData);
+        container.innerHTML = renderCatFlatTable(_catFlatList);
     }
 }
 
-function expandAllCats() { setAllCatExpand(true); }
-function collapseAllCats() { setAllCatExpand(false); }
-
-function setAllCatExpand(expand) {
-    function walk(nodes) {
-        nodes.forEach(n => {
-            n._expanded = expand;
-            if (n._children && n._children.length) walk(n._children);
-        });
-    }
-    walk(_catTreeData);
-    filterCatTree();
-}
-
-function toggleCatTreeNode(catId) {
-    function walk(nodes) {
-        for (const n of nodes) {
-            if (n.id === catId) {
-                n._expanded = !(n._expanded !== false);
-                return true;
-            }
-            if (n._children && n._children.length && walk(n._children)) return true;
-        }
-        return false;
-    }
-    walk(_catTreeData);
-    filterCatTree();
-}
-
-function addCategory(parentId) {
-    const cats = loadData('categories');
-    // Ensure object format
-    const isObj = cats.length === 0 || typeof cats[0] !== 'string';
-    const allNames = isObj ? getAllCategoryNames() : cats;
-    const parentOptions = (isObj ? allNames : cats).map(n => `<option value="${String(n).replace(/"/g,'&quot;')}">${n}</option>`).join('');
-    const parentLabel = parentId && getCategoryById(parentId) ? '（上级分类：' + getCategoryById(parentId).name + '）' : '';
-    openModal('新增分类' + parentLabel, `
-        <div class="form-field"><label>上级分类</label><select id="frmCatParent"><option value="">无（作为顶级分类）</option>${parentOptions}</select></div>
+function addCategory() {
+    var cats = loadData('categories');
+    var isObj = cats.length === 0 || typeof cats[0] !== 'string';
+    openModal('新增分类', `
         <div class="form-field"><label>分类名称 <span style="color:#c23d2e;">*</span></label><input id="frmCatName" placeholder="请输入分类名称"></div>
         <div class="form-row">
             <div class="form-field"><label>排序序号</label><input type="number" id="frmCatSort" value="${isObj?cats.length+1:cats.length+1}" style="width:90px;"></div>
@@ -2038,30 +1956,12 @@ function addCategory(parentId) {
         <div class="form-field"><label>备注说明（可选）</label><textarea id="frmCatNotes" rows="2" placeholder="分类备注、描述等信息"></textarea></div>
         <input type="hidden" id="frmCatId" value="">
     `, `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveNewCategory()">保存分类</button>`);
-    // If parentId specified, pre-select it
-    if (parentId && isObj) {
-        setTimeout(() => {
-            const parentCat = getCategoryById(parentId);
-            if (parentCat) {
-                const sel = document.getElementById('frmCatParent');
-                if (sel) {
-                    for (let i = 0; i < sel.options.length; i++) {
-                        if (sel.options[i].value === parentCat.name) { sel.selectedIndex = i; break; }
-                    }
-                }
-            }
-        }, 100);
-    }
-}
-
-function addSubCategory(parentCatId) {
-    addCategory(parentCatId);
 }
 
 function previewCatImage() {
-    const file = document.getElementById('frmCatImageFile').files[0];
+    var file = document.getElementById('frmCatImageFile').files[0];
     if (!file) return;
-    const reader = new FileReader();
+    var reader = new FileReader();
     reader.onload = function(e) {
         document.getElementById('frmCatImage').value = e.target.result;
         document.getElementById('frmCatImagePreview').innerHTML = '<img src="' + e.target.result + '" style="max-width:140px;max-height:90px;border-radius:8px;margin-top:4px;border:1px solid #dde6d4;">';
@@ -2070,16 +1970,10 @@ function previewCatImage() {
 }
 
 function editCategory(catId) {
-    const cat = getCategoryById(catId);
+    var cat = getCategoryById(catId);
     if (!cat) { alert('分类不存在'); return; }
-    const allNames = getAllCategoryNames().filter(function(n) { return n !== cat.name; });
-    const parentOptions = allNames.map(function(n) {
-        const sel = getCategoryByName(n) && getCategoryByName(n).id === cat.parentId ? 'selected' : '';
-        return '<option value="' + n.replace(/"/g,'&quot;') + '" ' + sel + '>' + n + '</option>';
-    }).join('');
-    const imgPreview = cat.image ? '<img src="' + cat.image + '" style="max-width:140px;max-height:90px;border-radius:8px;margin-top:4px;border:1px solid #dde6d4;">' : '';
+    var imgPreview = cat.image ? '<img src="' + cat.image + '" style="max-width:140px;max-height:90px;border-radius:8px;margin-top:4px;border:1px solid #dde6d4;">' : '';
     openModal('编辑分类 — ' + cat.name, `
-        <div class="form-field"><label>上级分类</label><select id="frmCatParent"><option value="" ${!cat.parentId?'selected':''}>无（作为顶级分类）</option>${parentOptions}</select></div>
         <div class="form-field"><label>分类名称 <span style="color:#c23d2e;">*</span></label><input id="frmCatName" value="${cat.name.replace(/"/g,'&quot;')}"></div>
         <div class="form-row">
             <div class="form-field"><label>排序序号</label><input type="number" id="frmCatSort" value="${cat.sortOrder||0}" style="width:90px;"></div>
@@ -2092,13 +1986,13 @@ function editCategory(catId) {
 }
 
 function saveNewCategory() {
-    var id = document.getElementById('frmCatId')?.value;
+    var idEl = document.getElementById('frmCatId');
+    var id = idEl ? idEl.value : '';
     var name = document.getElementById('frmCatName').value.trim();
-    var parentName = document.getElementById('frmCatParent')?.value || '';
-    var sortOrder = parseInt(document.getElementById('frmCatSort')?.value) || 0;
-    var status = document.getElementById('frmCatStatus')?.value || '显示';
-    var image = document.getElementById('frmCatImage')?.value || '';
-    var notes = document.getElementById('frmCatNotes')?.value || '';
+    var sortOrder = parseInt(document.getElementById('frmCatSort').value) || 0;
+    var status = document.getElementById('frmCatStatus').value || '显示';
+    var image = document.getElementById('frmCatImage').value || '';
+    var notes = document.getElementById('frmCatNotes').value || '';
     if (!name) { alert('分类名称不能为空'); return; }
 
     var cats = loadData('categories');
@@ -2106,52 +2000,42 @@ function saveNewCategory() {
         cats = cats.map(function(c, i) { return {id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}; });
     }
 
-    var parentCat = parentName ? cats.find(function(c) { return c.name === parentName; }) : null;
-    var parentId = parentCat ? parentCat.id : null;
-
-    if (id && parentId) {
-        var descendants = getAllDescendantIds(parseInt(id), cats);
-        if (descendants.indexOf(parentId) !== -1 || parseInt(id) === parentId) {
-            alert('不能将分类的上级设为自己或自己的子分类，会造成循环引用。');
-            return;
-        }
-    }
-
     if (id) {
-        var cat = cats.find(function(c) { return String(c.id) === String(id); });
+        var cat = null;
+        for (var i = 0; i < cats.length; i++) { if (String(cats[i].id) === String(id)) { cat = cats[i]; break; } }
         if (!cat) { alert('分类不存在'); return; }
         var oldName = cat.name;
-        if (name !== oldName && cats.some(function(c) { return c.name === name; })) {
-            alert('分类名称"' + name + '"已存在，请使用其他名称。');
-            return;
+        if (name !== oldName) {
+            for (var j = 0; j < cats.length; j++) { if (cats[j].name === name) { alert('分类名称"' + name + '"已存在，请使用其他名称。'); return; } }
         }
         cat.name = name;
-        cat.parentId = parentId;
         cat.sortOrder = sortOrder;
         cat.status = status;
         cat.image = image;
         cat.notes = notes;
         if (name !== oldName) {
             var products = loadData('products');
-            products.forEach(function(p) { if (p.category === oldName) p.category = name; });
+            for (var k = 0; k < products.length; k++) { if (products[k].category === oldName) products[k].category = name; }
             saveData('products', products);
             var promos = loadData('promotions');
             var promoChanged = false;
-            promos.forEach(function(p) {
-                if (Array.isArray(p.applicableProducts) && p.applicableProducts.indexOf(oldName) !== -1) {
-                    p.applicableProducts = p.applicableProducts.map(function(ap) { return ap === oldName ? name : ap; });
-                    promoChanged = true;
+            for (var pi = 0; pi < promos.length; pi++) {
+                if (Array.isArray(promos[pi].applicableProducts)) {
+                    for (var pj = 0; pj < promos[pi].applicableProducts.length; pj++) {
+                        if (promos[pi].applicableProducts[pj] === oldName) {
+                            promos[pi].applicableProducts[pj] = name;
+                            promoChanged = true;
+                        }
+                    }
                 }
-            });
+            }
             if (promoChanged) saveData('promotions', promos);
         }
     } else {
-        if (cats.some(function(c) { return c.name === name; })) {
-            alert('分类名称"' + name + '"已存在，请使用其他名称。');
-            return;
-        }
-        var maxId = cats.length ? Math.max.apply(null, cats.map(function(c) { return c.id; })) : 0;
-        cats.push({id: maxId + 1, name: name, parentId: parentId, sortOrder: sortOrder, status: status, image: image, notes: notes});
+        for (var jj = 0; jj < cats.length; jj++) { if (cats[jj].name === name) { alert('分类名称"' + name + '"已存在，请使用其他名称。'); return; } }
+        var maxId = 0;
+        for (var mi = 0; mi < cats.length; mi++) { if (cats[mi].id > maxId) maxId = cats[mi].id; }
+        cats.push({id: maxId + 1, name: name, parentId: null, sortOrder: sortOrder, status: status, image: image, notes: notes});
     }
     saveData('categories', cats);
     closeModal();
@@ -2160,36 +2044,24 @@ function saveNewCategory() {
     showToast('分类已保存');
 }
 
-function getAllDescendantIds(catId, cats) {
-    var result = [];
-    var children = cats.filter(function(c) { return c.parentId === catId; });
-    children.forEach(function(c) {
-        result.push(c.id);
-        var sub = getAllDescendantIds(c.id, cats);
-        result = result.concat(sub);
-    });
-    return result;
-}
-
 function deleteCategory(catId) {
     var cat = getCategoryById(catId);
     if (!cat) { alert('分类不存在'); return; }
-    var childCount = loadData('categories').filter(function(c) { return c.parentId === catId; }).length;
-    var warnMsg = childCount > 0
-        ? '分类"' + cat.name + '"下有 ' + childCount + ' 个子分类，删除后它们将变为顶级分类。\n\n确定删除吗？'
-        : '确定删除分类"' + cat.name + '"吗？\n该分类下的商品将变为"未分类"。';
-    if (!confirm(warnMsg)) return;
+    if (!confirm('确定删除分类"' + cat.name + '"吗？\n该分类下的商品将变为"未分类"。')) return;
 
     var cats = loadData('categories');
     if (typeof cats[0] === 'string') {
-        cats = cats.filter(function(x) { return x !== cat.name; });
+        var newCats = [];
+        for (var i = 0; i < cats.length; i++) { if (cats[i] !== cat.name) newCats.push(cats[i]); }
+        cats = newCats;
     } else {
-        cats.forEach(function(c) { if (c.parentId === cat.id) c.parentId = null; });
-        cats = cats.filter(function(c) { return c.id !== cat.id; });
+        var newCats2 = [];
+        for (var j = 0; j < cats.length; j++) { if (cats[j].id !== cat.id) newCats2.push(cats[j]); }
+        cats = newCats2;
     }
     saveData('categories', cats);
     var products = loadData('products');
-    products.forEach(function(p) { if (p.category === cat.name) p.category = '未分类'; });
+    for (var k = 0; k < products.length; k++) { if (products[k].category === cat.name) products[k].category = '未分类'; }
     saveData('products', products);
     navigateTo('category');
     addLog('删除分类: ' + cat.name);
@@ -2204,7 +2076,8 @@ function deleteCategoryFromEdit(catId) {
 function toggleCategoryStatus(catId) {
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') { alert('请先刷新页面完成数据迁移'); return; }
-    var cat = cats.find(function(c) { return String(c.id) === String(catId); });
+    var cat = null;
+    for (var i = 0; i < cats.length; i++) { if (String(cats[i].id) === String(catId)) { cat = cats[i]; break; } }
     if (!cat) return;
     cat.status = cat.status === '显示' ? '隐藏' : '显示';
     saveData('categories', cats);
@@ -2216,13 +2089,17 @@ function toggleCategoryStatus(catId) {
 function moveCategoryUp(catId) {
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') return;
-    var cat = cats.find(function(c) { return String(c.id) === String(catId); });
-    if (!cat) return;
-    var siblings = cats.filter(function(c) { return c.parentId === cat.parentId; }).sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
+    // With flat structure, all categories are siblings — sort by sortOrder
+    var sorted = [];
+    for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
+    sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
     var idx = -1;
-    for (var si = 0; si < siblings.length; si++) { if (String(siblings[si].id) === String(catId)) { idx = si; break; } }
+    for (var si = 0; si < sorted.length; si++) { if (String(sorted[si].id) === String(catId)) { idx = si; break; } }
     if (idx <= 0) return;
-    var prev = siblings[idx - 1];
+    var prev = sorted[idx - 1];
+    var cat = null;
+    for (var j = 0; j < cats.length; j++) { if (String(cats[j].id) === String(catId)) { cat = cats[j]; break; } }
+    if (!cat) return;
     var tmp = cat.sortOrder;
     cat.sortOrder = prev.sortOrder;
     prev.sortOrder = tmp;
@@ -2233,13 +2110,16 @@ function moveCategoryUp(catId) {
 function moveCategoryDown(catId) {
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') return;
-    var cat = cats.find(function(c) { return String(c.id) === String(catId); });
-    if (!cat) return;
-    var siblings = cats.filter(function(c) { return c.parentId === cat.parentId; }).sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
+    var sorted = [];
+    for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
+    sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
     var idx = -1;
-    for (var si = 0; si < siblings.length; si++) { if (String(siblings[si].id) === String(catId)) { idx = si; break; } }
-    if (idx < 0 || idx >= siblings.length - 1) return;
-    var next = siblings[idx + 1];
+    for (var si = 0; si < sorted.length; si++) { if (String(sorted[si].id) === String(catId)) { idx = si; break; } }
+    if (idx < 0 || idx >= sorted.length - 1) return;
+    var next = sorted[idx + 1];
+    var cat = null;
+    for (var j = 0; j < cats.length; j++) { if (String(cats[j].id) === String(catId)) { cat = cats[j]; break; } }
+    if (!cat) return;
     var tmp = cat.sortOrder;
     cat.sortOrder = next.sortOrder;
     next.sortOrder = tmp;
@@ -2248,21 +2128,24 @@ function moveCategoryDown(catId) {
 }
 
 function viewCatProducts(catName) {
-    var products = loadData('products').filter(function(p) { return p.category === catName; });
+    var products = loadData('products');
+    var catProds = [];
+    for (var i = 0; i < products.length; i++) { if (products[i].category === catName) catProds.push(products[i]); }
     var html = '<div style="max-height:420px;overflow-y:auto;">';
-    if (products.length === 0) {
+    if (catProds.length === 0) {
         html += '<p style="text-align:center;color:#819e73;padding:30px;">该分类下暂无商品</p>';
     } else {
         html += '<table class="data-table" style="min-width:500px;"><thead><tr><th>商品编号</th><th>名称</th><th>零售价</th><th>库存</th><th>状态</th></tr></thead><tbody>';
-        products.forEach(function(p) {
+        for (var j = 0; j < catProds.length; j++) {
+            var p = catProds[j];
             html += '<tr><td>' + (p.code||'') + '</td><td>' + p.name + '</td><td>¥' + formatMoney(p.retailPrice) + '</td><td>' + p.stock + ' ' + (p.unit||'') + '</td><td><span class="badge ' + (p.status==='上架'?'badge-on':'badge-off') + '">' + p.status + '</span></td></tr>';
-        });
+        }
         html += '</tbody></table>';
     }
     html += '</div>';
-    openModal('分类"' + catName + '"下的商品（共' + products.length + '件）', html,
+    openModal('分类"' + catName + '"下的商品（共' + catProds.length + '件）', html,
         '<button class="btn btn-outline" onclick="closeModal()">关闭</button>' +
-        (products.length > 0 ? ' <button class="btn btn-outline" onclick="batchMoveFromCat(\'' + catName.replace(/'/g,"\\'") + '\')">批量转移这些商品</button>' : ''));
+        (catProds.length > 0 ? ' <button class="btn btn-outline" onclick="batchMoveFromCat(\'' + catName.replace(/'/g,"\\'") + '\')">批量转移这些商品</button>' : ''));
 }
 
 function batchMoveFromCat(oldCat) {
@@ -2273,13 +2156,18 @@ function batchMoveFromCat(oldCat) {
 function batchMoveProducts(fromCat) {
     fromCat = fromCat || '';
     var products = loadData('products');
-    var fromCats = [];
     var seen = {};
-    products.forEach(function(p) { if (!seen[p.category]) { seen[p.category] = true; fromCats.push(p.category); } });
+    var fromCats = [];
+    for (var i = 0; i < products.length; i++) {
+        var pc = products[i].category;
+        if (!seen[pc]) { seen[pc] = true; fromCats.push(pc); }
+    }
     fromCats.sort();
     var toCats = getCategoryNames();
-    var fromOptions = fromCats.map(function(c) { return '<option value="' + c.replace(/"/g,'&quot;') + '" ' + (c===fromCat?'selected':'') + '>' + c + '</option>'; }).join('');
-    var toOptions = toCats.map(function(c) { return '<option value="' + c.replace(/"/g,'&quot;') + '">' + c + '</option>'; }).join('');
+    var fromOptions = '';
+    for (var j = 0; j < fromCats.length; j++) { fromOptions += '<option value="' + fromCats[j].replace(/"/g,'&quot;') + '" ' + (fromCats[j]===fromCat?'selected':'') + '>' + fromCats[j] + '</option>'; }
+    var toOptions = '';
+    for (var k = 0; k < toCats.length; k++) { toOptions += '<option value="' + toCats[k].replace(/"/g,'&quot;') + '">' + toCats[k] + '</option>'; }
     openModal('批量转移商品分类', `
         <div class="form-field"><label>将哪个分类的商品移走？</label><select id="batchFromCat">${fromOptions}</select></div>
         <div class="form-field"><label>移到哪个分类？</label><select id="batchToCat">${toOptions}</select></div>
@@ -2294,9 +2182,9 @@ function doBatchMoveProducts() {
     if (from === to) { alert('原分类和目标分类不能相同'); return; }
     var products = loadData('products');
     var count = 0;
-    products.forEach(function(p) {
-        if (p.category === from) { p.category = to; count++; }
-    });
+    for (var i = 0; i < products.length; i++) {
+        if (products[i].category === from) { products[i].category = to; count++; }
+    }
     if (count === 0) { alert('分类"' + from + '"下没有商品'); return; }
     saveData('products', products);
     closeModal();
@@ -2309,11 +2197,16 @@ function showCatStats() {
     var cats = buildCategoryFlatList();
     var products = loadData('products');
     var html = '<table class="data-table" style="min-width:650px;"><thead><tr><th>分类名称</th><th>状态</th><th>商品数量</th><th>库存总量</th><th>累计销量</th><th>库存金额</th></tr></thead><tbody>';
-    cats.forEach(function(c) {
-        var catProds = products.filter(function(p) { return p.category === c.name; });
-        var totalStock = catProds.reduce(function(s,p) { return s + (p.stock||0); }, 0);
-        var totalSales = catProds.reduce(function(s,p) { return s + (p.sales||0); }, 0);
-        var stockValue = catProds.reduce(function(s,p) { return s + (p.purchasePrice||0)*(p.stock||0); }, 0);
+    for (var i = 0; i < cats.length; i++) {
+        var c = cats[i];
+        var catProds = [];
+        for (var j = 0; j < products.length; j++) { if (products[j].category === c.name) catProds.push(products[j]); }
+        var totalStock = 0;
+        for (var k = 0; k < catProds.length; k++) { totalStock += (catProds[k].stock||0); }
+        var totalSales = 0;
+        for (var l = 0; l < catProds.length; l++) { totalSales += (catProds[l].sales||0); }
+        var stockValue = 0;
+        for (var m = 0; m < catProds.length; m++) { stockValue += (catProds[m].purchasePrice||0)*(catProds[m].stock||0); }
         html += '<tr>';
         html += '<td><strong>' + c.name + '</strong></td>';
         html += '<td>' + (c.status==='显示'?'<span class="badge badge-on">显示</span>':'<span class="badge badge-off">隐藏</span>') + '</td>';
@@ -2322,17 +2215,18 @@ function showCatStats() {
         html += '<td style="text-align:center;">' + totalSales + '</td>';
         html += '<td style="text-align:right;">¥' + formatMoney(stockValue) + '</td>';
         html += '</tr>';
-    });
+    }
     html += '</tbody></table>';
     openModal('分类统计报表', html, '<button class="btn btn-outline" onclick="closeModal()">关闭</button>');
 }
 
 function exportCategories() {
     var cats = buildCategoryFlatList();
-    var csv = 'ID,名称,上级分类ID,排序,状态,图片,备注\n';
-    cats.forEach(function(c) {
-        csv += c.id + ',"' + c.name + '",' + (c.parentId||'') + ',' + c.sortOrder + ',' + c.status + ',"' + (c.image||'') + '","' + (c.notes||'').replace(/"/g,'""') + '"\n';
-    });
+    var csv = 'ID,名称,排序,状态,图片,备注\n';
+    for (var i = 0; i < cats.length; i++) {
+        var c = cats[i];
+        csv += c.id + ',"' + c.name + '",' + c.sortOrder + ',' + c.status + ',"' + (c.image||'') + '","' + (c.notes||'').replace(/"/g,'""') + '"\n';
+    }
     var blob = new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8;'});
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -2344,7 +2238,7 @@ function exportCategories() {
 function importCategoriesPrompt() {
     openModal('从CSV导入分类', `
         <p style="margin-bottom:14px;color:#5e7a5a;line-height:1.6;">请选择CSV文件，格式要求：<br>
-        <b>ID, 名称, 上级分类ID, 排序, 状态, 图片URL, 备注</b><br>
+        <b>ID, 名称, 排序, 状态, 图片URL, 备注</b><br>
         <span style="font-size:0.7rem;color:#819e73;">（ID为空则自动生成，状态填写"显示"或"隐藏"）</span></p>
         <input type="file" id="importCatFile" accept=".csv" style="width:100%;">
     `, '<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="doImportCategories()">开始导入</button>');
@@ -2362,7 +2256,8 @@ function doImportCategories() {
         if (cats.length > 0 && typeof cats[0] === 'string') {
             cats = cats.map(function(c, i) { return {id:i+1, name:c, parentId:null, sortOrder:i+1, status:'显示', image:'', notes:''}; });
         }
-        var maxId = cats.length ? Math.max.apply(null, cats.map(function(c) { return c.id; })) : 0;
+        var maxId = 0;
+        for (var mi = 0; mi < cats.length; mi++) { if (cats[mi].id > maxId) maxId = cats[mi].id; }
         var importCount = 0, skipCount = 0;
         for (var i = 1; i < lines.length; i++) {
             var cols = parseCSVLine(lines[i]);
@@ -2370,14 +2265,15 @@ function doImportCategories() {
             var name = (cols[1]||'').trim();
             if (!name) continue;
             var id = parseInt(cols[0]) || (maxId + importCount + 1);
-            var parentId = cols[2] ? parseInt(cols[2]) : null;
-            var sortOrder = parseInt(cols[3]) || 0;
-            var rawStatus = (cols[4]||'').trim();
+            var sortOrder = parseInt(cols[2]) || 0;
+            var rawStatus = (cols[3]||'').trim();
             var status = (rawStatus === '隐藏' || rawStatus === 'hidden') ? '隐藏' : '显示';
-            var image = (cols[5]||'').trim();
-            var notes = (cols[6]||'').trim();
-            if (cats.some(function(c) { return String(c.id) === String(id); })) { skipCount++; continue; }
-            cats.push({id:id, name:name, parentId:parentId, sortOrder:sortOrder, status:status, image:image, notes:notes});
+            var image = (cols[4]||'').trim();
+            var notes = (cols[5]||'').trim();
+            var dup = false;
+            for (var di = 0; di < cats.length; di++) { if (String(cats[di].id) === String(id)) { dup = true; break; } }
+            if (dup) { skipCount++; continue; }
+            cats.push({id:id, name:name, parentId:null, sortOrder:sortOrder, status:status, image:image, notes:notes});
             importCount++;
         }
         saveData('categories', cats);
@@ -4508,7 +4404,7 @@ pageRenderers['shelve'] = function() {
     return renderTablePage('商品上架', '仓库管理 / 上架管理',
         ['商品名称','分类','库存','当前状态','零售价'],
         products,
-        (canEdit()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
+        (canEditWarehouse()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
         `<button class="btn btn-outline" onclick="navigateTo('shelve')">刷新</button>`,
         '搜索商品'
     );
@@ -4516,13 +4412,13 @@ pageRenderers['shelve'] = function() {
 function init_shelve() {
     refreshCurrentTable = () => renderTableData(loadData('products'),
         [{key:'name'},{key:'category'},{key:'stock'},{key:'status',render:p=>`<span class="badge ${p.status==='上架'?'badge-on':'badge-off'}">${p.status}</span>`},{key:'retailPrice',render:p=>'¥'+formatMoney(p.retailPrice)}],
-        (canEdit()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
+        (canEditWarehouse()?[{label:'上架',action:doShelve},{label:'下架',action:doUnshelve}]:[]),
         (item,term)=>item.name.includes(term)
     );
     refreshCurrentTable();
 }
 function doShelve(p) {
-    if (!canEdit()) { showToast('只读权限，无法操作上架'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法操作上架'); return; }
     if(p.status==='上架') { showToast('该商品已上架'); return; }
     const products = loadData('products');
     const prod = products.find(x=>x.id===p.id);
@@ -4533,7 +4429,7 @@ function doShelve(p) {
     showToast(`"${p.name}" 已上架`);
 }
 function doUnshelve(p) {
-    if (!canEdit()) { showToast('只读权限，无法操作下架'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法操作下架'); return; }
     if(p.status==='下架') { showToast('该商品已下架'); return; }
     const products = loadData('products');
     const prod = products.find(x=>x.id===p.id);
@@ -4550,7 +4446,7 @@ pageRenderers['inventory_writeoff'] = function() {
     return renderTablePage('库存核销', '仓库管理 / 核销管理',
         ['商品名称','库存','单位','到期日期','状态'],
         products.filter(p=>p.expiryDate && new Date(p.expiryDate)-new Date()< 30*24*60*60*1000),
-        (canEdit()?[{label:'核销',action:writeOff}]:[]),
+        (canEditWarehouse()?[{label:'核销',action:writeOff}]:[]),
         `<button class="btn btn-outline" onclick="navigateTo('inventory_writeoff')">刷新</button>`,
         '搜索商品'
     );
@@ -4564,13 +4460,13 @@ function init_inventory_writeoff() {
             if(diff<=7) return `<span class="badge badge-warn">临期(${diff}天)</span>`;
             return p.expiryDate;
         }},{key:'status'}],
-        (canEdit()?[{label:'核销',action:writeOff}]:[]),
+        (canEditWarehouse()?[{label:'核销',action:writeOff}]:[]),
         (item,term)=>item.name.includes(term)
     );
     refreshCurrentTable();
 }
 function writeOff(p) {
-    if (!canEdit()) { showToast('只读权限，无法核销'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法核销'); return; }
     openModal('库存核销 - '+p.name, `
         <p>当前库存: <strong>${p.stock}</strong> | 到期日期: ${p.expiryDate}</p>
         <div class="form-field"><label>核销数量</label><input type="number" id="frmWoQty" min="1" max="${p.stock}" value="${p.stock}"></div>
@@ -4597,11 +4493,11 @@ function doWriteOff(pid) {
 // -- 库存盘点 --
 pageRenderers['inventory_check'] = function() {
     const tasks = loadData('inventoryCheckTasks');
-    var createBtn = canEdit() ? `<button class="btn btn-primary" onclick="createCheckTask()">新建盘点任务</button>` : '';
+    var createBtn = canEditWarehouse() ? `<button class="btn btn-primary" onclick="createCheckTask()">新建盘点任务</button>` : '';
     return renderTablePage('库存盘点', '仓库管理 / 盘点管理',
         ['盘点单号','盘点日期','盘点范围','状态','盘点人','备注'],
         tasks,
-        [{label:'详情',action:viewCheckTask},...(canEdit()?[{label:'执行',action:executeCheck}]:[])],
+        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck}]:[])],
         createBtn + `<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('warehouse')}>🏭 仓库概览</button><button class="btn btn-outline" ${btnLink('inventory_check')}>刷新</button>`,
         '搜索盘点单号'
     );
@@ -4614,7 +4510,7 @@ function init_inventory_check() {
             if(t.status==='已完成') return '<span class="badge badge-on">已完成</span>';
             return '<span class="badge badge-off">'+t.status+'</span>';
         }},{key:'checker'},{key:'note'}],
-        [{label:'详情',action:viewCheckTask},...(canEdit()?[{label:'执行',action:executeCheck}]:[])],
+        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck}]:[])],
         (item,term)=>item.taskNo.includes(term)||item.note.includes(term)
     );
     refreshCurrentTable();
@@ -4626,7 +4522,7 @@ function createCheckTask() {
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveCheckTask()">创建</button>`);
 }
 function saveCheckTask() {
-    if (!canEdit()) { showToast('只读权限，无法创建盘点任务'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法创建盘点任务'); return; }
     const tasks = loadData('inventoryCheckTasks');
     const task = {
         id: makeId(),
@@ -4647,7 +4543,7 @@ function saveCheckTask() {
     showToast('盘点任务已创建: '+task.taskNo);
 }
 function executeCheck(t) {
-    if (!canEdit()) { showToast('只读权限，无法执行盘点'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法执行盘点'); return; }
     if(t.status==='已完成') { showToast('该任务已完成'); return; }
     const products = loadData('products');
     const filteredProducts = t.scope==='全库' ? products : products;
@@ -4679,7 +4575,7 @@ function executeCheck(t) {
         `<button class="btn btn-outline" onclick="closeModal()">暂存</button><button class="btn btn-primary" onclick="submitCheckResult('${t.id}')">提交盘点结果</button>`);
 }
 function submitCheckResult(taskId) {
-    if (!canEdit()) { showToast('只读权限，无法提交盘点结果'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法提交盘点结果'); return; }
     const tasks = loadData('inventoryCheckTasks');
     const task = tasks.find(x=>x.id===taskId);
     if(!task) return;
@@ -4744,8 +4640,8 @@ pageRenderers['inventory_alert'] = function() {
         <div class="page-body">
             <div class="dashboard-grid" id="alertStats"></div>
             ${renderTablePageContent('预警商品列表', ['商品名称','分类','当前库存','预警类型','预警阈值','预警信息'],
-                alerts, (canEdit()?[{label:'处理',action:handleAlert}]:[]),
-                `${canEdit() ? '<button class="btn btn-primary" onclick="manageAlertSettings()">预警设置</button>' : ''}<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('inventory_check')}>🔍 库存盘点</button><button class="btn btn-outline" ${btnLink('inventory_alert')}>刷新</button>`)}
+                alerts, (canEditWarehouse()?[{label:'处理',action:handleAlert}]:[]),
+                `${canEditWarehouse() ? '<button class="btn btn-primary" onclick="manageAlertSettings()">预警设置</button>' : ''}<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('inventory_check')}>🔍 库存盘点</button><button class="btn btn-outline" ${btnLink('inventory_alert')}>刷新</button>`)}
         </div>
     </div>`;
 };
@@ -4789,20 +4685,20 @@ function init_inventory_alert() {
         // 渲染表格
         renderTableData(alerts,
             [{key:'name'},{key:'category'},{key:'stock',render:a=>`<span style="color:#c23d2e;font-weight:600;">${a.stock}</span>`},{key:'alertType',render:a=>`<span class="badge ${a.alertType==='库存不足'?'badge-off':a.alertType==='库存过高'?'badge-warn':'badge-warn'}">${a.alertType}</span>`},{key:'threshold'},{key:'alertMsg'}],
-            (canEdit()?[{label:'处理',action:handleAlert}]:[]),
+            (canEditWarehouse()?[{label:'处理',action:handleAlert}]:[]),
             (item,term)=>item.name.includes(term)||item.alertType.includes(term)
         );
     };
     refreshCurrentTable();
 }
 function handleAlert(a) {
-    if (!canEdit()) { viewProduct(a); return; }
+    if (!canEditWarehouse()) { viewProduct(a); return; }
     // 仅查看商品详情，出/入库操作通过采购订单和销售收银完成
     if(a.alertType==='临期预警' && a.expiryDate) { writeOff(a); }
     else { viewProduct(a); }
 }
 function manageAlertSettings() {
-    if (!canEdit()) { showToast('只读权限，无法修改预警设置'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法修改预警设置'); return; }
     const settings = loadData('inventoryAlertSettings');
     const cats = loadData('categories');
     let html = `<table class="data-table" style="min-width:500px;"><thead><tr><th>适用分类</th><th>最低库存</th><th>最高库存</th><th>临期天数</th><th>启用</th><th>操作</th></tr></thead><tbody>`;
@@ -4823,6 +4719,7 @@ function manageAlertSettings() {
          <button class="btn btn-primary" onclick="saveAlertSettings()">保存设置</button>`);
 }
 function saveAlertSettings() {
+    if (!canEditWarehouse()) { showToast('只读权限，无法保存预警设置'); return; }
     const settings = loadData('inventoryAlertSettings');
     settings.forEach(s => {
         const minEl = document.getElementById('setMin_'+s.id);
@@ -4864,8 +4761,8 @@ function deleteAlertSetting(id) {
 // -- 仓库区域管理 --
 pageRenderers['warehouse_zones'] = function() {
     const zones = loadData('warehouseZones');
-    var actions = canEdit() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [];
-    var addBtn = canEdit() ? `<button class="btn btn-primary" onclick="addZone()">新增区域</button>` : '';
+    var actions = canEditWarehouse() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [];
+    var addBtn = canEditWarehouse() ? `<button class="btn btn-primary" onclick="addZone()">新增区域</button>` : '';
     return renderTablePage('仓库区域管理', '仓库管理 / 区域管理',
         ['区域名称','位置','容量','当前库存量','使用率','负责人','状态'],
         zones,
@@ -4877,7 +4774,7 @@ pageRenderers['warehouse_zones'] = function() {
 function init_warehouse_zones() {
     refreshCurrentTable = () => renderTableData(loadData('warehouseZones'),
         [{key:'name'},{key:'location'},{key:'capacity'},{key:'current'},{key:'capacity',render:z=>Math.round(z.current/z.capacity*100)+'%'},{key:'manager'},{key:'status',render:z=>`<span class="badge ${z.status==='使用中'?'badge-on':'badge-off'}">${z.status}</span>`}],
-        canEdit() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [],
+        canEditWarehouse() ? [{label:'编辑',action:editZone},{label:'删除',action:deleteZone}] : [],
         (item,term)=>item.name.includes(term)||item.location.includes(term)
     );
     refreshCurrentTable();
@@ -4898,7 +4795,7 @@ function editZone(z) {
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveZone()">保存</button>`);
 }
 function saveZone() {
-    if (!canEdit()) { showToast('只读权限，无法修改仓库区域'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法修改仓库区域'); return; }
     const zones = loadData('warehouseZones');
     const id = document.getElementById('frmZoneId')?.value;
     const data = {
@@ -4920,7 +4817,7 @@ function saveZone() {
     showToast('区域信息已保存');
 }
 function deleteZone(z) {
-    if (!canEdit()) { showToast('只读权限，无法删除仓库区域'); return; }
+    if (!canEditWarehouse()) { showToast('只读权限，无法删除仓库区域'); return; }
     if(!confirm(`确定删除区域"${z.name}"吗？`)) return;
     let zones = loadData('warehouseZones');
     zones = zones.filter(x=>x.id!==z.id);
