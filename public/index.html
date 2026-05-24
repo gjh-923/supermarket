@@ -1094,15 +1094,16 @@ function syncProductCategories() {
     usedCats.forEach(function(catName) {
         if (!existingNames.has(catName)) {
             var maxId = categories.reduce(function(m, c) { return Math.max(m, (typeof c === 'string' ? 0 : c.id) || 0); }, 0);
+            var maxSort = categories.reduce(function(m, c) { return Math.max(m, (c.sortOrder || c.sort || 0) || 0); }, 0);
             categories.push({
-                id: maxId + 1, name: catName, sort: 99,
+                id: maxId + 1, name: catName, sortOrder: maxSort + 1,
                 status: '显示', description: '从产品自动同步',
                 createdAt: new Date().toISOString()
             });
             changed = true;
         }
     });
-    if (changed) saveData('categories', categories);
+    if (changed) { normalizeCategorySortOrders(categories); saveData('categories', categories); }
     // 将空分类的产品归入"未分类"，并确保该分类存在
     var productsChanged = false;
     products.forEach(function(p) {
@@ -1124,7 +1125,7 @@ function syncProductCategories() {
     }
 }
 function deduplicateCategories() {
-    // 按名称去重：保留第一个（通常是本地最早创建的），删除后续同名的
+    // 按名称去重：保留第一个，删除后续同名的，然后重新编号
     var cats = loadData('categories');
     if (!cats.length || typeof cats[0] === 'string') return;
     var seen = {};
@@ -1134,21 +1135,12 @@ function deduplicateCategories() {
         var c = cats[i];
         if (seen[c.name]) {
             changed = true;
-            // 将重复分类下的产品迁移到保留的分类
-            var products = loadData('products');
-            var prodChanged = false;
-            for (var j = 0; j < products.length; j++) {
-                if (products[j].category === c.name && products[j].id) {
-                    // 产品已引用此名称，无需迁移（名称相同）
-                    // 但如果分类ID不同，保留第一个分类的引用
-                }
-            }
-            continue; // 跳过重复
+            continue;
         }
         seen[c.name] = true;
         deduped.push(c);
     }
-    if (changed) saveData('categories', deduped);
+    if (changed) { normalizeCategorySortOrders(deduped); saveData('categories', deduped); }
 }
 function migrateData() {
     // 迁移会员数据：补充缺失字段
@@ -2051,12 +2043,18 @@ function renderCatFlatTable(list) {
 }
 
 var _catFlatList = [];
+var _catListLastJSON = ''; // 用于检测数据是否变化，避免不必要的重渲染
 
 function init_category() {
     _catFlatList = buildCategoryFlatList();
+    _catListLastJSON = JSON.stringify(_catFlatList);
     refreshCurrentTable = function() {
-        // 每次刷新从 localStorage 重新加载（避免自动同步后使用过期的 _catFlatList）
-        _catFlatList = buildCategoryFlatList();
+        // 从 localStorage 重新加载，但只在数据变化时重渲染（避免跳动）
+        var newList = buildCategoryFlatList();
+        var newJSON = JSON.stringify(newList);
+        if (newJSON === _catListLastJSON) return; // 数据未变，跳过
+        _catFlatList = newList;
+        _catListLastJSON = newJSON;
         var container = document.getElementById('catListContainer');
         if (container) {
             container.innerHTML = renderCatFlatTable(_catFlatList);
@@ -2066,8 +2064,9 @@ function init_category() {
 }
 
 function filterCatList() {
-    // 搜索/筛选时从 localStorage 重新加载（确保数据最新）
+    // 搜索/筛选：从 localStorage 重新加载，无条件渲染（用户主动操作）
     _catFlatList = buildCategoryFlatList();
+    _catListLastJSON = JSON.stringify(_catFlatList);
     var container = document.getElementById('catListContainer');
     if (container) {
         container.innerHTML = renderCatFlatTable(_catFlatList);
@@ -2225,10 +2224,23 @@ function toggleCategoryStatus(catId) {
     showToast('"' + cat.name + '" 已设为' + cat.status);
 }
 
+function normalizeCategorySortOrders(cats) {
+    // 确保所有分类有唯一且连续的 sortOrder
+    if (!cats || !cats.length) return cats;
+    var sorted = [];
+    for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
+    sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0) || ((a.id||0) - (b.id||0)); });
+    for (var i = 0; i < sorted.length; i++) {
+        sorted[i].sortOrder = i + 1;
+    }
+    return cats; // 返回原数组（元素已就地修改）
+}
+
 function moveCategoryUp(catId) {
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') return;
-    // With flat structure, all categories are siblings — sort by sortOrder
+    // 先规范化排序值，确保每个分类有唯一 sortOrder
+    normalizeCategorySortOrders(cats);
     var sorted = [];
     for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
     sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
@@ -2236,9 +2248,8 @@ function moveCategoryUp(catId) {
     for (var si = 0; si < sorted.length; si++) { if (String(sorted[si].id) === String(catId)) { idx = si; break; } }
     if (idx <= 0) return;
     var prev = sorted[idx - 1];
-    var cat = null;
-    for (var j = 0; j < cats.length; j++) { if (String(cats[j].id) === String(catId)) { cat = cats[j]; break; } }
-    if (!cat) return;
+    var cat = sorted[idx];
+    // 交换 sortOrder
     var tmp = cat.sortOrder;
     cat.sortOrder = prev.sortOrder;
     prev.sortOrder = tmp;
@@ -2250,6 +2261,7 @@ function moveCategoryUp(catId) {
 function moveCategoryDown(catId) {
     var cats = loadData('categories');
     if (cats.length > 0 && typeof cats[0] === 'string') return;
+    normalizeCategorySortOrders(cats);
     var sorted = [];
     for (var i = 0; i < cats.length; i++) sorted.push(cats[i]);
     sorted.sort(function(a,b) { return (a.sortOrder||0) - (b.sortOrder||0); });
@@ -2257,9 +2269,7 @@ function moveCategoryDown(catId) {
     for (var si = 0; si < sorted.length; si++) { if (String(sorted[si].id) === String(catId)) { idx = si; break; } }
     if (idx < 0 || idx >= sorted.length - 1) return;
     var next = sorted[idx + 1];
-    var cat = null;
-    for (var j = 0; j < cats.length; j++) { if (String(cats[j].id) === String(catId)) { cat = cats[j]; break; } }
-    if (!cat) return;
+    var cat = sorted[idx];
     var tmp = cat.sortOrder;
     cat.sortOrder = next.sortOrder;
     next.sortOrder = tmp;
