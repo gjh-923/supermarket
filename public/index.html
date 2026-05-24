@@ -440,33 +440,26 @@ async function _apiSyncAll() {
             }
             // 对于有数据的表：ID-based 合并（本地数据为主，服务器只补充本地没有的新记录）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
-            if (Array.isArray(data) && data.length > 0) {
-                const existing = localStorage.getItem('sms_' + camelKey);
-                if (existing) {
-                    try {
-                        const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            if (typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
-                                const serverMap = new Map(data.map(d => [d.id, d]));
-                                const localMap = new Map(parsed.map(d => [d.id, d]));
-                                // 本地为主：只添加服务器有而本地没有的新记录，已有记录保留本地版本
-                                for (const [id, serverRecord] of serverMap) {
-                                    if (!localMap.has(id)) {
-                                        localMap.set(id, serverRecord);
-                                    }
-                                }
-                                const merged = Array.from(localMap.values());
-                                merged.sort((a, b) => (b.id || 0) - (a.id || 0));
-                                localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
-                                continue;
-                            }
-                        }
-                    } catch(e) {}
+            const existing = localStorage.getItem('sms_' + camelKey);
+            let parsed = null;
+            try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
+            if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0) {
+                // 始终使用 ID 合并：本地为主 + 服务器补充本地没有的记录
+                const localMap = new Map(parsed.map(d => [d.id, d]));
+                if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
+                    for (const d of data) {
+                        if (!localMap.has(d.id)) localMap.set(d.id, d);
+                    }
                 }
+                const merged = Array.from(localMap.values());
+                merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+                localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
+            } else if (Array.isArray(data) && data.length > 0) {
+                // 本地无数据：直接使用服务器数据
+                transformed = _normalizeData(camelKey, transformed);
+                localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
             }
-            // 数据规范化：解析 JSON 字符串字段，修正字段名不匹配
-            transformed = _normalizeData(camelKey, transformed);
-            localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
+            // 如果本地有数据但服务器为空，保持本地数据不变（不覆盖）
         }
         // 同步后立即修复数据一致性
         try { deduplicateCategories(); } catch(e) {}
@@ -3719,10 +3712,6 @@ pageRenderers['sales_stats'] = function() {
     </div>`;
 };
 function init_sales_stats() {
-    // One-time cleanup: remove invalid orders without orderNo
-    const raw = loadData('salesOrders')||[];
-    const clean = raw.filter(o=>o.orderNo);
-    if (clean.length < raw.length) { saveData('salesOrders', clean); }
     refreshCurrentTable = () => {
     const orders = (loadData('salesOrders')||[]).filter(o=>o.orderNo&&o.items&&o.items.length>0);
     const normTime = t => {
