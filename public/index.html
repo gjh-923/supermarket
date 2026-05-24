@@ -182,7 +182,7 @@
         .schedule-table td.sch-cell:hover { background: #f0f7e8 !important; }
         .schedule-table td.sch-empty { border: 1px solid #edefe8; background: #eef0eb; }
         .sch-day { font-size: 0.7rem; font-weight: 700; color: #1f3b2c; margin-bottom: 2px; text-align: right; }
-        .sch-cell .shift-tag { font-size: 0.6rem; padding: 1px 4px; border-radius: 6px; margin: 1px 0; display: block; line-height: 1.4; word-break: break-all; }
+        .sch-cell .shift-tag { font-size: 0.55rem; padding: 1px 5px; border-radius: 10px; margin: 1px 0; display: inline-block; line-height: 1.5; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
         .shift-早班 { background: #fff7db; color: #b87c1a; }
         .shift-中班 { background: #e3f2fd; color: #1565c0; }
         .shift-晚班 { background: #f3e5f5; color: #7b1fa2; }
@@ -241,10 +241,12 @@
         .tab-btn { flex:1; text-align:center; padding:11px 20px; border-radius:11px; cursor:pointer; font-size:0.84rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.15s ease; user-select:none; }
         .tab-btn.active { color:#1f3b2c; background:white; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
         .tab-btn:hover:not(.active) { color:#426b39; background:rgba(255,255,255,0.5); }
-        .fin-tab-bar { display:flex; gap:2px; background:#f0f4eb; border-radius:14px; padding:5px; margin-bottom:12px; }
-        .fin-tab-btn { flex:1; text-align:center; padding:10px 14px; border-radius:11px; cursor:pointer; font-size:0.82rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.15s ease; user-select:none; white-space:nowrap; }
+        .fin-tab-bar { display:flex; gap:2px; background:#f0f4eb; border-radius:14px; padding:5px; margin-bottom:8px; position:sticky; top:0; z-index:20; }
+        .fin-tab-btn { flex:1; text-align:center; padding:9px 12px; border-radius:11px; cursor:pointer; font-size:0.82rem; font-weight:600; color:#819e73; background:transparent; transition:all 0.15s ease; user-select:none; white-space:nowrap; }
         .fin-tab-btn.active { color:#1f3b2c; background:white; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
         .fin-tab-btn:hover:not(.active) { color:#426b39; background:rgba(255,255,255,0.6); }
+        @keyframes finFadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+        .fin-panel-enter { animation: finFadeIn 0.25s ease-out; }
         /* ========== 内容区块卡片 ========== */
         .content-card { background:white; border-radius:20px; padding:20px 24px; box-shadow:0 2px 12px rgba(0,0,0,0.04); margin-bottom:16px; }
         .content-card h3 { font-size:0.9rem; font-weight:600; color:#1f3b2c; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #f0f4eb; }
@@ -259,10 +261,11 @@
         .data-table tbody tr { transition:background 0.15s; }
         .data-table tbody tr:hover { background:#f6faf0; }
         /* ========== 仪表盘卡片增强 ========== */
-        .stat-card { transition:all 0.15s ease; cursor:default; }
+        .stat-card { transition:all 0.2s ease; cursor:default; }
         .stat-card.clickable { cursor:pointer; }
-        .stat-card.clickable:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,0.06); }
-        .stat-card:hover { transform: scale(1.02); z-index: 5; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+        .stat-card.clickable:hover { transform:translateY(-3px); box-shadow:0 8px 20px rgba(0,0,0,0.08); }
+        .stat-card:hover { transform: translateY(-2px); z-index: 5; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+        .dashboard-grid .stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 22px rgba(0,0,0,0.1); }
         .stat-card:hover .stat-num { overflow: visible; white-space: normal; word-break: break-all; max-width: none; }
         /* ========== 分页增强 ========== */
         .page-btn { transition:all 0.2s; }
@@ -758,10 +761,10 @@ const DEFAULT_DATA = {
     ],
     categories: ['蔬菜水果','饼干糕点','肉干零食','糖果','酒水饮料','粮油调味','乳品烘焙','日用百货','休闲食品','冷冻食品','调味品','个人护理'],
     members: [
-        { id:1,cardNo:'HY20240001',name:'张三',gender:'男',birthday:'1990-05-15',phone:'13800001001',email:'zhangsan@email.com',address:'北京市朝阳区建国路88号',level:'黄金会员',points:2580,joinDate:'2024-01-15',totalSpent:25800,status:'正常',lastConsumeDate:'2024-05-20',source:'门店注册' },
-        { id:2,cardNo:'HY20240002',name:'李四',gender:'女',birthday:'1995-08-22',phone:'13800001002',email:'lisi@email.com',address:'北京市海淀区中关村1号',level:'白银会员',points:890,joinDate:'2024-03-20',totalSpent:8900,status:'正常',lastConsumeDate:'2024-05-18',source:'小程序注册' },
-        { id:3,cardNo:'HY20230001',name:'王五',gender:'男',birthday:'1988-12-03',phone:'13800001003',email:'wangwu@email.com',address:'北京市西城区金融街15号',level:'钻石会员',points:5600,joinDate:'2023-06-10',totalSpent:56000,status:'正常',lastConsumeDate:'2024-05-21',source:'门店注册' },
-        { id:4,cardNo:'HY20240003',name:'赵六',gender:'女',birthday:'1992-03-18',phone:'13800001004',email:'zhaoliu@email.com',address:'北京市丰台区南三环16号',level:'普通会员',points:120,joinDate:'2024-05-01',totalSpent:1200,status:'冻结',lastConsumeDate:'2024-05-10',source:'活动推广' }
+        { id:1,cardNo:'HY20240001',name:'张三',gender:'男',birthday:'1990-05-15',phone:'13800001001',email:'zhangsan@email.com',address:'北京市朝阳区建国路88号',level:'黄金会员',points:2580,cumulativePoints:2580,joinDate:'2024-01-15',totalSpent:25800,status:'正常',lastConsumeDate:'2024-05-20',source:'门店注册' },
+        { id:2,cardNo:'HY20240002',name:'李四',gender:'女',birthday:'1995-08-22',phone:'13800001002',email:'lisi@email.com',address:'北京市海淀区中关村1号',level:'白银会员',points:890,cumulativePoints:890,joinDate:'2024-03-20',totalSpent:8900,status:'正常',lastConsumeDate:'2024-05-18',source:'小程序注册' },
+        { id:3,cardNo:'HY20230001',name:'王五',gender:'男',birthday:'1988-12-03',phone:'13800001003',email:'wangwu@email.com',address:'北京市西城区金融街15号',level:'钻石会员',points:5600,cumulativePoints:5600,joinDate:'2023-06-10',totalSpent:56000,status:'正常',lastConsumeDate:'2024-05-21',source:'门店注册' },
+        { id:4,cardNo:'HY20240003',name:'赵六',gender:'女',birthday:'1992-03-18',phone:'13800001004',email:'zhaoliu@email.com',address:'北京市丰台区南三环16号',level:'普通会员',points:120,cumulativePoints:120,joinDate:'2024-05-01',totalSpent:1200,status:'冻结',lastConsumeDate:'2024-05-10',source:'活动推广' }
     ],
     memberLevels: [
         { name:'钻石会员', minSpent:20000, discount:88, pointsRate:2, cardColor:'#2196F3', benefits:'尊享8.8折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' },
@@ -985,6 +988,10 @@ function migrateData() {
         Object.keys(defaultMember).forEach(key => {
             if (!(key in m) && key !== 'id') { m[key] = defaultMember[key]; membersChanged = true; }
         });
+    });
+    // 迁移：补充 cumulativePoints 字段（使用现有积分为初始值）
+    members.forEach(m => {
+        if (!('cumulativePoints' in m)) { m.cumulativePoints = m.points || 0; membersChanged = true; }
     });
     if (membersChanged) saveData('members', members);
 
@@ -2388,7 +2395,7 @@ function lookupPosMember(phone) {
         posMember = m;
         const lvl = loadData('memberLevels').find(l=>l.name===m.level);
         const lvlColor = lvl?lvl.cardColor:'#9e9e9e';
-        document.getElementById('posMemberInfo').innerHTML = `<span style="color:#2a7a3b;">✓ ${m.name}</span> <span class="badge" style="display:inline-block;background:${lvlColor}22;color:${lvlColor};border:1px solid ${lvlColor}44;font-size:0.65rem;padding:1px 6px;border-radius:20px;">${m.level}</span> ${lvl?lvl.discount:'100'}折 | ${m.points}积分`;
+        document.getElementById('posMemberInfo').innerHTML = `<span style="color:#2a7a3b;">✓ ${m.name}</span> <span class="badge" style="display:inline-block;background:${lvlColor}22;color:${lvlColor};border:1px solid ${lvlColor}44;font-size:0.65rem;padding:1px 6px;border-radius:20px;">${m.level}</span> ${lvl?lvl.discount:'100'}折 | 积分:${m.points||0} | 累计消费:¥${formatMoney(m.totalSpent)}`;
         // Populate coupon options
         resetCouponSelection();
         const couponArea = document.getElementById('posCouponArea');
@@ -2500,6 +2507,7 @@ function saveQuickMember() {
         address: document.getElementById('frmQuickAddr').value.trim(),
         level: lowestLevel.name,
         points: 0,
+        cumulativePoints: 0,
         joinDate: getToday(),
         totalSpent: 0,
         status: '正常',
@@ -2676,6 +2684,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
             const rate = lvl ? lvl.pointsRate : 1;
             const earnedPoints = Math.floor(finalAmount * rate);
             m.points = (m.points||0) + earnedPoints;
+            m.cumulativePoints = (m.cumulativePoints||0) + earnedPoints;
             const levels = loadData('memberLevels');
             levels.sort((a,b)=>b.minSpent-a.minSpent);
             const newLevel = levels.find(l=>m.totalSpent >= l.minSpent);
@@ -2773,6 +2782,7 @@ function localReturnOrder(o) {
             const rate = lvl ? lvl.pointsRate : 1;
             const lostPoints = Math.floor(o.totalAmount * rate);
             m.points = Math.max(0, (m.points||0) - lostPoints);
+            // cumulativePoints 不减少，它是终身累积值
             // 降级检查
             const levels = loadData('memberLevels');
             levels.sort((a,b)=>b.minSpent-a.minSpent);
@@ -3019,7 +3029,8 @@ pageRenderers['member'] = function() {
                 <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-num" id="statMemTotal">-</div><div class="stat-label">会员总数</div></div>
                 <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-num" id="statMemActive" style="color:#2a7a3b;">-</div><div class="stat-label">正常会员</div></div>
                 <div class="stat-card"><div class="stat-icon">🆕</div><div class="stat-num" id="statMemNew">-</div><div class="stat-label">本月新增</div></div>
-                <div class="stat-card"><div class="stat-icon">🎯</div><div class="stat-num" id="statMemPoints">-</div><div class="stat-label">总积分池</div></div>
+                <div class="stat-card"><div class="stat-icon">⭐</div><div class="stat-num" id="statMemPoints">-</div><div class="stat-label">现有积分池</div></div>
+                <div class="stat-card"><div class="stat-icon">🏆</div><div class="stat-num" id="statMemCumPts" style="color:#b87c1a;">-</div><div class="stat-label">累计积分总计</div></div>
                 <div class="stat-card"><div class="stat-icon">❄️</div><div class="stat-num" id="statMemFrozen" style="color:#bc5a4a;">-</div><div class="stat-label">冻结会员</div></div>
             </div>
             <div class="action-bar">
@@ -3039,7 +3050,7 @@ ${currentUser.role!=="cashier"?`                    <button class="btn btn-outli
             </div>
             <div class="table-wrap">
                 <table class="data-table">
-                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>积分</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
+                    <thead><tr><th>卡号</th><th>姓名</th><th>性别</th><th>手机号</th><th>等级</th><th>现有积分</th><th>累积积分</th><th>注册日期</th><th>累计消费</th><th>状态</th><th>最后消费</th><th>操作</th></tr></thead>
                     <tbody id="tableBody"></tbody>
                 </table>
                 <div class="pagination" id="paginationArea"></div>
@@ -3057,10 +3068,12 @@ function updateMemberStats() {
     const frozen = members.filter(m=>m.status==='冻结').length;
     const newThis = members.filter(m=>m.joinDate&&m.joinDate.startsWith(thisMonth)).length;
     const totalPts = members.reduce((s,m)=>s+(m.points||0),0);
+    const totalCumPts = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
     document.getElementById('statMemTotal').textContent = members.length;
     document.getElementById('statMemActive').textContent = active;
     document.getElementById('statMemNew').textContent = newThis;
     document.getElementById('statMemPoints').textContent = totalPts;
+    document.getElementById('statMemCumPts').textContent = totalCumPts;
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
@@ -3078,6 +3091,7 @@ function init_member() {
                  return `<span class="badge" style="background:${color}22;color:${color};border:1px solid ${color}44;">${m.level}</span>`;
              }},
              {key:'points',render:m=>`<span style="font-weight:600;color:#2b6e3c;">${m.points||0}</span>`},
+             {key:'cumulativePoints',render:m=>`<span style="font-weight:600;color:#b87c1a;">${m.cumulativePoints||0}</span>`},
              {key:'joinDate'},
              {key:'totalSpent',render:m=>'¥'+formatMoney(m.totalSpent)},
              {key:'status',render:m=>`<span class="badge ${(m.status||'正常')==='正常'?'badge-on':'badge-off'}">${m.status||'正常'}</span>`},
@@ -3102,7 +3116,8 @@ function viewMember(m) {
             <div><strong>性别:</strong> ${m.gender||'-'}</div><div><strong>生日:</strong> ${m.birthday||'-'}</div>
             <div><strong>手机号:</strong> ${m.phone}</div><div><strong>邮箱:</strong> ${m.email||'-'}</div>
             <div><strong>地址:</strong> ${m.address||'-'}</div><div><strong>等级:</strong> <span class="badge" style="background:${lvl?lvl.cardColor:'#9e9e9e'}22;color:${lvl?lvl.cardColor:'#9e9e9e'};">${m.level}</span></div>
-            <div><strong>积分:</strong> ${m.points}</div><div><strong>累计消费:</strong> ¥${formatMoney(m.totalSpent)}</div>
+            <div><strong>现有积分:</strong> ${m.points||0}</div><div><strong>累积积分:</strong> ${m.cumulativePoints||0}</div>
+            <div><strong>累计消费:</strong> ¥${formatMoney(m.totalSpent)}</div><div><strong>折扣:</strong> ${lvl?lvl.discount:'100'}折</div>
             <div><strong>注册日期:</strong> ${m.joinDate}</div><div><strong>注册来源:</strong> ${m.source||'-'}</div>
             <div><strong>状态:</strong> <span class="badge ${m.status==='正常'?'badge-on':'badge-off'}">${m.status}</span></div><div><strong>最后消费:</strong> ${m.lastConsumeDate||'-'}</div>
         </div>
@@ -3170,7 +3185,8 @@ function editMember(m) {
         <div class="form-row"><div class="form-field"><label>性别</label><select id="frmMemGender"><option ${m.gender==='男'?'selected':''}>男</option><option ${m.gender==='女'?'selected':''}>女</option></select></div><div class="form-field"><label>生日</label><input type="date" id="frmMemBirthday" value="${m.birthday||''}"></div></div>
         <div class="form-row"><div class="form-field"><label>手机号 *</label><input id="frmMemPhone" value="${m.phone}"></div><div class="form-field"><label>邮箱</label><input type="email" id="frmMemEmail" value="${m.email||''}"></div></div>
         <div class="form-field"><label>地址</label><input id="frmMemAddr" value="${m.address||''}"></div>
-        <div class="form-row"><div class="form-field"><label>等级</label><select id="frmMemLevel">${levels.map(l=>`<option ${l.name===m.level?'selected':''}>${l.name}</option>`).join('')}</select></div><div class="form-field"><label>积分</label><input type="number" id="frmMemPoints" value="${m.points}"></div></div>
+        <div class="form-row"><div class="form-field"><label>等级</label><select id="frmMemLevel">${levels.map(l=>`<option ${l.name===m.level?'selected':''}>${l.name}</option>`).join('')}</select></div><div class="form-field"><label>现有积分</label><input type="number" id="frmMemPoints" value="${m.points}"></div></div>
+        <div class="form-row"><div class="form-field"><label>累积积分</label><input type="number" id="frmMemCumPoints" value="${m.cumulativePoints||0}" disabled style="background:#f5f5f5;color:#819e73;"></div><div class="form-field"><label>累计消费</label><input value="¥${formatMoney(m.totalSpent)}" disabled style="background:#f5f5f5;color:#819e73;"></div></div>
         <div class="form-row"><div class="form-field"><label>注册来源</label><select id="frmMemSource"><option ${m.source==='门店注册'?'selected':''}>门店注册</option><option ${m.source==='小程序注册'?'selected':''}>小程序注册</option><option ${m.source==='活动推广'?'selected':''}>活动推广</option><option ${m.source==='其他'?'selected':''}>其他</option></select></div><div class="form-field"><label>状态</label><select id="frmMemStatus"><option ${m.status==='正常'?'selected':''}>正常</option><option ${m.status==='冻结'?'selected':''}>冻结</option></select></div></div>`,
         `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveMember()">保存</button>`);
 }
@@ -3195,6 +3211,7 @@ function saveMember() {
         address: document.getElementById('frmMemAddr').value.trim(),
         level: document.getElementById('frmMemLevel').value,
         points: parseInt(document.getElementById('frmMemPoints').value)||0,
+        cumulativePoints: id ? (members.find(m=>m.id==id)?.cumulativePoints||0) : 0,
         joinDate: id ? members.find(m=>m.id==id)?.joinDate : getToday(),
         totalSpent: id ? (members.find(m=>m.id==id)?.totalSpent||0) : 0,
         status: document.getElementById('frmMemStatus').value,
@@ -3264,8 +3281,8 @@ function deleteMember(m) {
 }
 function exportMembers() {
     const members = loadData('members');
-    let csv = '卡号,姓名,性别,手机号,邮箱,地址,等级,积分,注册日期,累计消费,状态,最后消费,来源\n';
-    csv += members.map(m=>[m.cardNo,m.name,m.gender,m.phone,m.email,m.address,m.level,m.points,m.joinDate,m.totalSpent,m.status,m.lastConsumeDate,m.source].join(',')).join('\n');
+    let csv = '卡号,姓名,性别,手机号,邮箱,地址,等级,现有积分,累积积分,注册日期,累计消费,状态,最后消费,来源\n';
+    csv += members.map(m=>[m.cardNo,m.name,m.gender,m.phone,m.email,m.address,m.level,m.points,m.cumulativePoints||0,m.joinDate,m.totalSpent,m.status,m.lastConsumeDate,m.source].join(',')).join('\n');
     const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3410,10 +3427,10 @@ function autoMatchMemberLevel(member) {
     const levels = loadData('memberLevels');
     if (!levels.length) return;
     levels.sort((a,b)=>b.minSpent-a.minSpent);
-    const pts = member.points || 0;
+    const spent = member.totalSpent || 0;
     let matched = levels[levels.length-1]; // default to lowest
     for (const lv of levels) {
-        if (pts >= (lv.minSpent || 0)) { matched = lv; break; }
+        if (spent >= (lv.minSpent || 0)) { matched = lv; break; }
     }
     if (member.level !== matched.name) {
         member.level = matched.name;
@@ -3507,6 +3524,7 @@ function doBatchAddPoints() {
     const m = members.find(x=>x.id===mid);
     if(!m) return;
     m.points += pts;
+    m.cumulativePoints = (m.cumulativePoints||0) + pts;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'活动赠送', points:pts, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'活动赠送'});
@@ -3532,6 +3550,7 @@ function doAdjustPoints(mid) {
     if(!m) return;
     if(m.points + adj < 0) { alert('积分不足，调整后不能为负数'); return; }
     m.points += adj;
+    if (adj > 0) m.cumulativePoints = (m.cumulativePoints||0) + adj;
     saveData('members', members);
     const records = loadData('memberPointsRecords');
     records.push({id:makeId(), memberId:m.id, memberName:m.name, type:adj>0?'积分调整(增加)':'积分调整(减少)', points:adj, balance:m.points, time:new Date().toLocaleString(), operator:currentUser.name, note:note||'管理员调整'});
@@ -4763,6 +4782,9 @@ function _finSelectModule(page, el) {
     if (!panel || !pageRenderers[page]) return;
     refreshCurrentTable = function() {};
     panel.innerHTML = pageRenderers[page]();
+    panel.classList.remove('fin-panel-enter');
+    void panel.offsetWidth;
+    panel.classList.add('fin-panel-enter');
     const initFn = window['init_' + page];
     if (typeof initFn === 'function') initFn();
 }
@@ -4773,10 +4795,10 @@ function finParentPage(title, breadcrumb, children) {
         previewContent = pageRenderers[_finSelectedPage]();
     }
     return `<div class="page active"><div class="page-header"><div><h1>${title}</h1><div class="breadcrumb">${breadcrumb}</div></div></div>
-    <div class="page-body" style="padding:0;">
-        <div class="fin-tab-bar" style="display:flex;gap:2px;background:#f0f4eb;border-radius:14px;padding:5px;margin-bottom:12px;">
-            ${children.map(c=>`<div class="fin-tab-btn ${_finSelectedPage===c.page?'active':''}" onclick="_finSelectModule('${c.page}',this)" style="flex:1;text-align:center;padding:10px 14px;border-radius:11px;cursor:pointer;font-size:0.82rem;font-weight:600;color:${_finSelectedPage===c.page?'#1f3b2c':'#819e73'};background:${_finSelectedPage===c.page?'white':'transparent'};box-shadow:${_finSelectedPage===c.page?'0 2px 8px rgba(0,0,0,0.08)':'none'};transition:all 0.2s ease;user-select:none;white-space:nowrap;">
-                <span style="margin-right:6px;">${c.icon}</span>${c.name}
+    <div class="page-body" style="padding:0 0 16px 0;">
+        <div class="fin-tab-bar">
+            ${children.map(c=>`<div class="fin-tab-btn ${_finSelectedPage===c.page?'active':''}" onclick="_finSelectModule('${c.page}',this)">
+                <span style="margin-right:5px;">${c.icon}</span>${c.name}
             </div>`).join('')}
         </div>
         <div style="background:#f9fbf7;border-radius:16px;min-height:500px;" id="finDetailPanel">
@@ -5073,9 +5095,10 @@ function editEmployee(emp) {
 }
 function saveEmployee() {
     const employees = loadData('employees');
-    const id = document.getElementById('frmEmpId')?.value;
+    const idVal = document.getElementById('frmEmpId')?.value;
+    const idNum = idVal ? parseInt(idVal) : null;
     const data = {
-        id: id ? parseInt(id) : (employees.length?Math.max(...employees.map(e=>e.id))+1:1),
+        id: idNum || (employees.length?Math.max(...employees.map(e=>parseInt(e.id)||0))+1:1),
         code: document.getElementById('frmEmpCode').value.trim(),
         name: document.getElementById('frmEmpName').value.trim(),
         dept: document.getElementById('frmEmpDept').value.trim(),
@@ -5084,18 +5107,19 @@ function saveEmployee() {
         joinDate: document.getElementById('frmEmpDate').value
     };
     if(!data.name||!data.code) { alert('姓名和工号不能为空'); return; }
-    if(id) { const idx = employees.findIndex(e=>e.id==id); if(idx!==-1) employees[idx]=data; }
+    if(idNum) { const idx = employees.findIndex(e=>parseInt(e.id)===idNum); if(idx!==-1) employees[idx]=data; }
     else employees.push(data);
     saveData('employees', employees);
     closeModal();
     refreshCurrentTable();
-    addLog(`员工操作: ${id?'编辑':'新增'} ${data.name}`);
+    addLog(`员工操作: ${idNum?'编辑':'新增'} ${data.name}`);
     showToast('员工信息已保存');
 }
 function deleteEmployee(emp) {
     if(!confirm(`确定删除员工"${emp.name}"吗？`)) return;
     let employees = loadData('employees');
-    employees = employees.filter(x=>x.id!==emp.id);
+    const empId = parseInt(emp.id);
+    employees = employees.filter(x=>parseInt(x.id)!==empId);
     saveData('employees', employees);
     refreshCurrentTable();
     addLog(`删除员工: ${emp.name}`);
@@ -5137,7 +5161,9 @@ pageRenderers['employee_schedule'] = function() {
                     const emp = employees.find(e => e.id === s.employee_id);
                     const shiftName = s.shift || '休息';
                     const sc = shiftColors[shiftName] || ['#f5f5f5','#ddd','#999'];
-                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};">${emp.name} ${shiftName}</span>`;
+                    const shiftAbbr = {'早班':'早','中班':'中','晚班':'晚','休息':'休'}[shiftName]||shiftName;
+                    const empAbbr = emp ? (emp.name||'').slice(0,3) : '?';
+                    if (emp) tagsHtml += `<span class="shift-tag" style="background:${sc[0]};color:${sc[2]};border:1px solid ${sc[1]};" title="${emp.name} - ${shiftName}">${empAbbr}·${shiftAbbr}</span>`;
                 });
                 const tdStyle = isToday ? 'background:#e8f5e0;border:2px solid #4caf50;font-weight:700;' : isWeekend ? 'background:#fdfdf7;' : '';
                 cells += `<td class="sch-cell" onclick="openScheduleDay('${dateStr}')" style="${tdStyle}"><div class="sch-day">${d}${isToday ? '<span style="font-size:0.5rem;color:#4caf50;">今天</span>' : ''}</div>${tagsHtml}</td>`;
