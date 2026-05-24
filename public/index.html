@@ -2263,6 +2263,9 @@ function toggleCategoryStatus(catId) {
     cat.status = cat.status === '显示' ? '隐藏' : '显示';
     saveData('categories', cats);
     _syncCategoriesToServer();
+    // 重置筛选为"全部"，让用户能看到被隐藏的分类（半透明），确认操作生效
+    var filterEl = document.getElementById('catStatusFilter');
+    if (filterEl) filterEl.value = '全部';
     init_category();
     addLog('分类状态切换: ' + cat.name + ' → ' + cat.status);
     showToast('"' + cat.name + '" 已设为' + cat.status + '（' + (cat.status==='隐藏'?'POS收银台不可见':'POS收银台可见') + '）');
