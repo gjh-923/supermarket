@@ -5415,7 +5415,7 @@ function viewEmpSchedule(empId, empName) {
     const mo = scheduleMonth || (now.getMonth() + 1);
     const schedules = loadData('schedules');
     const monthStr = `${yr}-${String(mo).padStart(2,'0')}`;
-    const monthSchedules = schedules.filter(s => s.date.startsWith(monthStr) && String(s.employee_id) === String(empId));
+    const monthSchedules = schedules.filter(s => (s.date||'').startsWith(monthStr) && String(s.employee_id) === String(empId));
     const daysInMonth = new Date(yr, mo, 0).getDate();
     const firstDayOfWeek = new Date(yr, mo - 1, 1).getDay();
     const shiftMap = {};
@@ -5482,7 +5482,7 @@ function viewEmpSchedule(empId, empName) {
 function exportSchedule() {
     const schedules = loadData('schedules');
     const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
-    const monthSchedules = schedules.filter(s=>s.date.startsWith(monthStr));
+    const monthSchedules = schedules.filter(s=>(s.date||'').startsWith(monthStr));
     const employees = loadData('employees');
     const daysInMonth = new Date(scheduleYear, scheduleMonth, 0).getDate();
     // Build CSV
