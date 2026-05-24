@@ -1455,11 +1455,9 @@ async function navigateTo(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
     renderPage(page);
-    // Background sync after rendering for snappy navigation
+    // Background sync after rendering (without immediate re-render — auto-sync timer handles refresh)
     if (_apiToken && !_isSyncing) {
-        _apiSyncAll().then(() => {
-            if(typeof refreshCurrentTable === 'function') refreshCurrentTable();
-        }).catch(()=>{});
+        _apiSyncAll().catch(()=>{});
     }
 }
 function cardLink(page, title) {
