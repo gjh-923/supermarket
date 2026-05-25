@@ -6311,7 +6311,7 @@ pageRenderers['employee_schedule'] = function() {
     </div>`;
 };
 function init_employee_schedule() {
-    refreshCurrentTable = () => { try { renderPage('employee_schedule'); } catch(e) {} };
+    refreshCurrentTable = () => {};
 }
 function changeScheduleMonth(delta) {
     scheduleMonth += delta;
@@ -6648,7 +6648,7 @@ pageRenderers['employee_attendance'] = function() {
     </div>`;
 };
 function init_employee_attendance() {
-    refreshCurrentTable = () => { try { renderPage('employee_attendance'); } catch(e) {} };
+    refreshCurrentTable = () => {};
 }
 function changeAttMonth(delta) {
     const [y,m] = attMonth.split('-').map(Number);
@@ -8841,7 +8841,7 @@ function rollbackMaintenance(rid) {
     showToast('维护记录已标记为回滚');
 }
 function init_system_maintenance() {
-    refreshCurrentTable = () => { try { renderPage('system_maintenance'); } catch(e) {} };
+    refreshCurrentTable = () => {};
 }
 
 // ==================== 日志 ====================
