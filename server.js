@@ -2414,7 +2414,14 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
       .run(storeKey, JSON.stringify(merged));
 
     // 同步到对应的 SQL 表，防止 syncAffectedTablesToDataStore 用空表覆盖 data_store
+    if (storeKey === 'inventoryCheckTasks') {
+      console.log('[sync] inventoryCheckTasks received', rows.length, 'tasks, statuses:', rows.map(r => r.id && (r.taskNo||r.task_no)+':'+r.status).join(', '));
+    }
     try { _syncToSqlTable(storeKey, merged); } catch(e) { console.warn('SQL表同步失败:', storeKey, e.message); }
+    if (storeKey === 'inventoryCheckTasks') {
+      const verify = db.prepare('SELECT id, task_no, status FROM inventory_check_tasks ORDER BY id DESC LIMIT 5').all();
+      console.log('[sync] inventoryCheckTasks SQL after sync:', JSON.stringify(verify));
+    }
 
     db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
       .run(req.user.name, `同步数据: ${storeKey} (${rows.length}条)`);

@@ -435,7 +435,7 @@ async function _apiSyncAll() {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
-        const allData = await _apiGet('/api/export/all');
+        const allData = await _apiGet('/api/export/all?_=' + Date.now());
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
@@ -523,6 +523,14 @@ async function _apiSyncAll() {
         // 同步后修复数据一致性（仅修复分类，会员统计在页面加载时运行，避免每3秒触发saveData推送风暴）
         try { deduplicateCategories(); } catch(e) {}
         try { syncProductCategories(); } catch(e) {}
+        // 诊断：记录库存盘点任务同步状态
+        try {
+            var checkTasks = loadData('inventoryCheckTasks');
+            if (checkTasks && checkTasks.length > 0) {
+                var latest = checkTasks.slice(0, 3);
+                console.log('[sync] inventoryCheckTasks top3:', latest.map(function(t){return t.taskNo+':'+t.status+(t.completeTime?'('+t.completeTime+')':'');}).join(', '));
+            }
+        } catch(e) {}
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
     finally { _isSyncing = false; }
@@ -1121,7 +1129,11 @@ function saveData(key, data) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
             body: JSON.stringify({ data: Array.isArray(data) ? data : Object.values(data) })
-        }).catch(function(){}).finally(function() {
+        }).then(function(res) { return res.json(); }).then(function(json) {
+            if (json.code !== 0) console.warn('[saveData] push failed for ' + key + ':', json.msg || json.message);
+        }).catch(function(e) {
+            console.warn('[saveData] push network error for ' + key + ':', e.message);
+        }).finally(function() {
             // 等 push 完成后再拉回，避免拉到服务端旧数据覆盖本地新数据
             if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
             _syncDebounceTimer = setTimeout(async function() {
