@@ -7084,56 +7084,74 @@ function saveManualSalary() {
 }
 
 // -- 员工岗位管理 --
-var _posFilterCategory = '全部';
-function filterPosByCat(cat) { _posFilterCategory = cat; currentFilterTerm = ''; currentTablePage = 1; refreshCurrentTable(); }
+var _posExpandedCats = {};
+function togglePosCat(cat) { _posExpandedCats[cat] = !_posExpandedCats[cat]; renderPosCategoryView(); }
+function expandAllPosCats(categories) { categories.forEach(c=>_posExpandedCats[c]=true); renderPosCategoryView(); }
+function collapseAllPosCats(categories) { categories.forEach(c=>_posExpandedCats[c]=false); renderPosCategoryView(); }
+var _posSearchTerm = '';
+function searchPositions(term) { _posSearchTerm = term; renderPosCategoryView(); }
 pageRenderers['employee_position'] = function() {
     const positions = loadData('employeePositions');
     const categories = ['管理部','行政财务部','收银客服部','采购仓储部','营运安保部','系统管理岗'];
-    // Category stats
-    let statsHtml = categories.map(cat=>{
-        const count = positions.filter(p=>p.category===cat).length;
-        const totalEmp = positions.filter(p=>p.category===cat).reduce((s,p)=>s+(p.employeeNames||[]).length,0);
-        return `<div class="stat-card card-center" onclick="filterPosByCat('${cat}')" style="cursor:pointer;"><div class="stat-icon">👥</div><div class="stat-num" style="font-size:1rem;">${cat}</div><div class="stat-label">${count}个岗位 / ${totalEmp}人</div></div>`;
-    }).join('');
-    // Category tabs
     const allCount = positions.length;
-    let tabsHtml = `<button class="btn btn-outline" onclick="filterPosByCat('全部')" style="${_posFilterCategory==='全部'?'background:#2a7a3b;color:#fff;':''}margin-right:4px;">全部 (${allCount})</button>`;
-    categories.forEach(cat=>{
-        const cnt = positions.filter(p=>p.category===cat).length;
-        tabsHtml += `<button class="btn btn-outline" onclick="filterPosByCat('${cat}')" style="${_posFilterCategory===cat?'background:#2a7a3b;color:#fff;':''}margin-right:4px;">${cat} (${cnt})</button>`;
-    });
     return `<div class="page active">
         <div class="page-header"><div><h1>员工岗位管理</h1><div class="breadcrumb">员工管理 / 岗位管理</div></div><div style="color:#819e73;font-size:0.8rem;">共 ${allCount} 个岗位</div></div>
         <div class="page-body">
-            <div class="stats-row" style="margin-bottom:12px;">${statsHtml}</div>
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">${tabsHtml}</div>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <input placeholder="搜索岗位名称" oninput="filterTable(this.value)" style="padding:6px 12px;border:1px solid #dde6d4;border-radius:16px;font-size:0.78rem;width:180px;">
-                    <button class="btn btn-primary" onclick="addEmployeePosition()">新增岗位</button>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input placeholder="搜索岗位名称或分类..." oninput="searchPositions(this.value)" style="padding:6px 12px;border:1px solid #dde6d4;border-radius:16px;font-size:0.78rem;width:200px;">
+                    <button class="btn btn-outline" style="font-size:0.72rem;" onclick="expandAllPosCats(${JSON.stringify(categories).replace(/"/g,"'")})">全部展开</button>
+                    <button class="btn btn-outline" style="font-size:0.72rem;" onclick="collapseAllPosCats(${JSON.stringify(categories).replace(/"/g,"'")})">全部收起</button>
                 </div>
+                <button class="btn btn-primary" onclick="addEmployeePosition()">新增岗位</button>
             </div>
-            <div id="tableArea">
-                <table class="data-table" style="min-width:100%;">
-                    <thead><tr><th>岗位名称</th><th>岗位分类</th><th>岗位描述</th><th>关联员工</th><th>操作</th></tr></thead>
-                    <tbody id="tableBody"></tbody>
-                </table>
-                <div class="pagination" id="paginationArea"></div>
-            </div>
+            <div id="posCategoryView"></div>
         </div>
     </div>`;
 };
+function renderPosCategoryView() {
+    const positions = loadData('employeePositions');
+    const categories = ['管理部','行政财务部','收银客服部','采购仓储部','营运安保部','系统管理岗'];
+    let html = '';
+    categories.forEach(cat=>{
+        let catPositions = positions.filter(p=>p.category===cat);
+        if (_posSearchTerm) catPositions = catPositions.filter(p=>p.name.includes(_posSearchTerm)||p.category.includes(_posSearchTerm)||(p.description||'').includes(_posSearchTerm));
+        const totalEmp = catPositions.reduce((s,p)=>s+(p.employeeNames||[]).length,0);
+        const isExpanded = _posExpandedCats[cat] !== false; // default expanded
+        html += `<div style="background:white;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.04);margin-bottom:10px;overflow:hidden;">
+            <div onclick="togglePosCat('${cat}')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:#f5faf0;cursor:pointer;user-select:none;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:1.1rem;transition:transform 0.2s;display:inline-block;${isExpanded?'transform:rotate(90deg)':''}">▶</span>
+                    <span style="font-weight:700;color:#1f3b2c;font-size:0.9rem;">${cat}</span>
+                    <span class="badge badge-warn" style="font-size:0.7rem;">${catPositions.length} 个岗位</span>
+                    <span style="font-size:0.7rem;color:#819e73;">| ${totalEmp} 人关联</span>
+                </div>
+                <span style="font-size:0.7rem;color:#819e73;">${isExpanded?'点击收起':'点击展开'}</span>
+            </div>
+            <div style="display:${isExpanded?'block':'none'};">
+                ${catPositions.length===0 ? `<div style="text-align:center;padding:24px;color:#819e73;font-size:0.78rem;">暂无岗位</div>` : `<table class="data-table" style="min-width:100%;margin:0;border-radius:0;box-shadow:none;">
+                    <thead><tr><th>岗位名称</th><th>岗位描述</th><th>关联员工</th><th>操作</th></tr></thead>
+                    <tbody>${catPositions.map(p=>`<tr>
+                        <td><b>${p.name}</b></td>
+                        <td><span style="font-size:0.72rem;color:#666;">${(p.description||'—').slice(0,40)}${(p.description||'').length>40?'...':''}</span></td>
+                        <td>${(p.employeeNames||[]).length>0?(p.employeeNames||[]).join('、'):'<span style="color:#819e73;">暂未关联</span>'}</td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-outline" style="font-size:0.68rem;padding:3px 10px;" onclick="event.stopPropagation();bindEmployeeToPosition(${JSON.stringify(p).replace(/"/g,'&quot;')})">关联</button>
+                            <button class="btn btn-outline" style="font-size:0.68rem;padding:3px 10px;" onclick="event.stopPropagation();viewEmployeePosition(${JSON.stringify(p).replace(/"/g,'&quot;')})">查看</button>
+                            <button class="btn btn-outline" style="font-size:0.68rem;padding:3px 10px;" onclick="event.stopPropagation();editEmployeePosition(${JSON.stringify(p).replace(/"/g,'&quot;')})">编辑</button>
+                            <button class="btn btn-outline" style="font-size:0.68rem;padding:3px 10px;color:#c23d2e;" onclick="event.stopPropagation();deleteEmployeePosition(${JSON.stringify(p).replace(/"/g,'&quot;')})">删除</button>
+                        </td>
+                    </tr>`).join('')}</tbody>
+                </table>`}
+            </div>
+        </div>`;
+    });
+    const container = document.getElementById('posCategoryView');
+    if (container) container.innerHTML = html || '<div style="text-align:center;padding:24px;color:#819e73;">暂无分类数据</div>';
+}
 function init_employee_position() {
-    refreshCurrentTable = () => renderTableData(loadData('employeePositions'),
-        [{key:'name'},{key:'category',render:p=>`<span class="badge badge-warn">${p.category}</span>`},{key:'description',render:p=>`<span style="font-size:0.7rem;">${(p.description||'').slice(0,30)}${(p.description||'').length>30?'...':''}</span>`},{key:'employeeNames',render:p=>(p.employeeNames||[]).length>0?(p.employeeNames||[]).join('、'):'<span style="color:#819e73;">暂未关联</span>'}],
-        [{label:'关联员工',action:bindEmployeeToPosition},{label:'查看',action:viewEmployeePosition},{label:'编辑',action:editEmployeePosition},{label:'删除',action:deleteEmployeePosition}],
-        function(item,term){
-            if (_posFilterCategory !== '全部' && item.category !== _posFilterCategory) return false;
-            if (term) return item.name.includes(term) || item.category.includes(term) || (item.description||'').includes(term);
-            return true;
-        }
-    );
-    refreshCurrentTable();
+    refreshCurrentTable = () => { renderPosCategoryView(); };
+    renderPosCategoryView();
 }
 function addEmployeePosition() {
     const categories = ['管理部','行政财务部','收银客服部','采购仓储部','营运安保部','系统管理岗'];
