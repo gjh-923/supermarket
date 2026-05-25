@@ -490,6 +490,8 @@ async function _apiSyncAll() {
                             }
                             merged.push(local);
                             serverMap.delete(local.id);
+                        } else {
+                            merged.push(local);
                         }
                     }
                     for (var _key of serverMap.keys()) { merged.push(serverMap.get(_key)); }
@@ -4593,7 +4595,7 @@ function updatePointsStats() {
     const totalCumPoints = members.reduce((s,m)=>s+(m.cumulativePoints||0),0);
     const totalSpentAll = members.reduce((s,m)=>s+(m.totalSpent||0),0);
     const totalExchanged = records.filter(r=>r.type==='积分兑换').reduce((s,r)=>s+Math.abs(r.points),0);
-    const totalEarned = records.filter(r=>r.type==='消费获取').reduce((s,r)=>s+r.points,0);
+    const totalEarned = totalSpentAll;
     const el = function(id,val){var e=document.getElementById(id);if(e)e.textContent=val;};
     el('statPtsBalance', totalPoints);
     el('statPtsCumulative', totalCumPoints);
