@@ -3520,16 +3520,7 @@ function checkout() {
         total = Math.max(0, total - bundleDiscount);
         bundleInfo = `\n满减优惠: -¥${formatMoney(bundleDiscount)} (满¥${formatMoney(bundleP.threshold)}减¥${bundleP.discount})`;
     }
-    // Apply coupon discount (不能超过剩余应付金额)
-    const actualCouponDiscount = Math.min(couponDiscount, total);
-    total = Math.max(0, total - actualCouponDiscount);
-    if (actualCouponDiscount > 0) {
-        couponInfo = `\n代金券抵扣: -¥${formatMoney(actualCouponDiscount)} (消耗${couponCost}积分)`;
-        if (couponDiscount > actualCouponDiscount) {
-            couponInfo += `\n(券面额¥${formatMoney(couponDiscount)}，超出¥${formatMoney(couponDiscount - actualCouponDiscount)}不找零)`;
-        }
-    }
-    // 计算会员折扣
+    // 计算会员折扣（先于代金券抵扣，与服务端 calc 顺序保持一致）
     let discountRate = 100;
     let memberInfo = '';
     if (posMember) {
@@ -3537,9 +3528,18 @@ function checkout() {
         if (lvl) discountRate = lvl.discount;
         memberInfo = `\n会员: ${posMember.name}(${posMember.level}, ${discountRate}折)`;
     }
-    const finalAmount = Math.round(total * discountRate) / 100;
-    const discountNote = discountRate < 100 ? `\n会员折后: ¥${formatMoney(finalAmount)} (${discountRate}折)` : '';
-    if(!confirm(`合计: ¥${formatMoney(total)}${bundleInfo}${couponInfo}${promoNote}${discountNote}${memberInfo}\n支付方式: ${payMethod}\n确认结算吗？`)) return;
+    const totalAfterMember = Math.round(total * discountRate) / 100;
+    const discountNote = discountRate < 100 ? `\n会员折后: ¥${formatMoney(totalAfterMember)} (${discountRate}折)` : '';
+    // Apply coupon discount（会员折后抵扣，券面额不超过折后应付）
+    const actualCouponDiscount = Math.min(couponDiscount, totalAfterMember);
+    if (actualCouponDiscount > 0) {
+        couponInfo = `\n代金券抵扣: -¥${formatMoney(actualCouponDiscount)} (消耗${couponCost}积分)`;
+        if (couponDiscount > actualCouponDiscount) {
+            couponInfo += `\n(券面额¥${formatMoney(couponDiscount)}，超出¥${formatMoney(couponDiscount - actualCouponDiscount)}不找零)`;
+        }
+    }
+    const finalAmount = Math.max(0, totalAfterMember - actualCouponDiscount);
+    if(!confirm(`合计: ¥${formatMoney(total)}${bundleInfo}${promoNote}${discountNote}${couponInfo}${memberInfo}\n支付方式: ${payMethod}\n确认结算吗？`)) return;
 
     // 尝试 API 结算
     const cartForApi = posCart.map(item => ({
@@ -3635,7 +3635,7 @@ function _localSaveOrder(orderNo, finalAmount, payMethod, total, discountRate, c
         totalAmount: finalAmount, originalAmount: originalTotal,
         discountAmount: discountAmount, discountRate: discountRateVal,
         couponDiscount: couponVal, bundleDiscount: bundleVal,
-        promoAmount: Math.max(0, originalTotal - total - bundleVal - couponVal),
+        promoAmount: Math.max(0, originalTotal - total - bundleVal),
         memberId: posMember?.id||null, memberName: posMember?.name||'',
         time: getNow(), cashier: getCashierName(),
         paymentMethod: payMethod, status: '已完成'
