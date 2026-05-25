@@ -356,10 +356,18 @@ async function _apiRequest(method, path, body) {
         const res = await fetch(API_BASE + path, opts);
         clearTimeout(timeout);
         const json = await res.json();
+        if (json.code === 401) {
+            _apiToken = ''; _apiUser = null;
+            localStorage.removeItem('sms_token'); localStorage.removeItem('sms_user');
+            alert('登录已过期，请重新登录');
+            location.reload();
+            throw new Error(json.message || '登录已过期');
+        }
         if (json.code !== 0) throw new Error(json.message || '请求失败');
         return json.data;
     } catch(e) {
         clearTimeout(timeout);
+        if (e.name === 'AbortError') throw new Error('请求超时');
         throw e;
     }
 }
