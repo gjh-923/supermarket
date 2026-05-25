@@ -424,48 +424,58 @@ function _transformKeys(obj) {
 const _SNAKE_CASE_TABLES = new Set(['schedules', 'attendances', 'salaries']);
 
 async function _apiSyncAll() {
+    if (_isSyncing) return;
+    _isSyncing = true;
     try {
         const allData = await _apiGet('/api/export/all');
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
-            // 服务器返回空数组时，保留本地数据不覆盖
-            if (Array.isArray(data) && data.length === 0) {
-                const existing = localStorage.getItem('sms_' + camelKey);
-                if (existing) {
-                    try {
-                        const parsed = JSON.parse(existing);
-                        if (Array.isArray(parsed) && parsed.length > 0) continue;
-                    } catch(e) {}
-                }
-            }
-            // 对于有数据的表：ID-based 合并（本地数据为主，服务器只补充本地没有的新记录）
+            // 服务器返回空数组：保持本地数据不变
+            if (Array.isArray(data) && data.length === 0) continue;
+            // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
             const existing = localStorage.getItem('sms_' + camelKey);
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
-            if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0) {
-                // 始终使用 ID 合并：本地为主 + 服务器补充本地没有的记录
+            if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0 && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
                 const localMap = new Map(parsed.map(d => [d.id, d]));
-                if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
-                    for (const d of data) {
-                        if (!localMap.has(d.id)) localMap.set(d.id, d);
-                    }
+                for (const d of data) {
+                    localMap.set(d.id, d);  // 服务器数据覆盖同ID记录，新增服务器独有的
                 }
+                // 防竞态：重新读localStorage，捕获同步期间saveData新增的记录
+                try {
+                    const latest = localStorage.getItem('sms_' + camelKey);
+                    if (latest) {
+                        const latestParsed = JSON.parse(latest);
+                        if (Array.isArray(latestParsed)) {
+                            for (const d of latestParsed) {
+                                if (d && typeof d === 'object' && 'id' in d && !localMap.has(d.id)) {
+                                    localMap.set(d.id, d);
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {}
                 const merged = Array.from(localMap.values());
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
-                localStorage.setItem('sms_' + camelKey, JSON.stringify(_normalizeData(camelKey, merged)));
+                const normalized = _normalizeData(camelKey, merged);
+                // 安全保护：如果合并后的记录数比本地原始还少，拒绝写入（防止数据丢失）
+                if (camelKey === 'salesOrders' && parsed.length > 0 && normalized.length < parsed.length) {
+                    console.warn('[sync] salesOrders 异常：合并后'+normalized.length+'条 < 本地原有'+parsed.length+'条，保留本地数据');
+                    continue;
+                }
+                localStorage.setItem('sms_' + camelKey, JSON.stringify(normalized));
             } else if (Array.isArray(data) && data.length > 0) {
-                // 本地无数据：直接使用服务器数据
                 transformed = _normalizeData(camelKey, transformed);
                 localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
             }
-            // 如果本地有数据但服务器为空，保持本地数据不变（不覆盖）
         }
         // 同步后立即修复数据一致性
         try { deduplicateCategories(); } catch(e) {}
         try { syncProductCategories(); } catch(e) {}
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
+    finally { _isSyncing = false; }
 }
 
 async function _seedServerIfEmpty() {
@@ -490,13 +500,9 @@ async function _seedServerIfEmpty() {
 function startAutoSync() {
     stopAutoSync();
     _syncTimer = setInterval(async () => {
-        if (_isSyncing || !_apiToken) return;
-        _isSyncing = true;
-        try {
-            await _apiSyncAll();
-            _refreshCurrentView();
-        } catch(e) {}
-        _isSyncing = false;
+        if (!_apiToken) return;
+        await _apiSyncAll();
+        _refreshCurrentView();
     }, 8000);
 }
 function stopAutoSync() {
@@ -1462,8 +1468,8 @@ async function navigateTo(page) {
     const navItem = document.querySelector(`.nav-item[data-page="${page}"]`);
     if (navItem) navItem.classList.add('active');
     renderPage(page);
-    // Background sync after rendering (without immediate re-render — auto-sync timer handles refresh)
-    if (_apiToken && !_isSyncing) {
+    // Background sync after rendering
+    if (_apiToken) {
         _apiSyncAll().catch(()=>{});
     }
 }
@@ -1952,16 +1958,15 @@ async function saveProduct() {
     _apiSaveProduct(data).catch(e => console.warn('API保存商品失败:', e.message));
     } catch(e) { console.error('保存商品失败:', e); alert('保存失败: '+e.message); }
 }
-function deleteProduct(p) {
+async function deleteProduct(p) {
     if(!confirm(`确定删除商品"${p.name}"吗？`)) return;
+    try { await _apiDeleteProduct(p.id); } catch(e) { alert('删除失败: '+e.message); return; }
     let products = loadData('products');
     products = products.filter(x=>x.id!==p.id);
     saveData('products', products);
     refreshCurrentTable();
     addLog(`删除商品: ${p.name}`);
     showToast('已删除');
-    // API 同步（后台）
-    _apiDeleteProduct(p.id).catch(e => console.warn('API删除商品失败:', e.message));
 }
 function batchDeleteProduct() {
     alert('请通过表格中的删除按钮逐个删除，或使用"重置默认数据"功能。');
@@ -2285,7 +2290,7 @@ function saveNewCategory() {
     showToast('分类已保存');
 }
 
-function deleteCategory(catId) {
+async function deleteCategory(catId) {
     var cat = getCategoryById(catId);
     if (!cat) { alert('分类不存在'); return; }
     // 检查该分类下是否有商品
@@ -2298,6 +2303,7 @@ function deleteCategory(catId) {
     }
     if (!confirm('确定删除分类"' + cat.name + '"吗？此操作不可恢复。')) return;
 
+    try { await _apiDeleteCategory(cat.name); } catch(e) { alert('删除失败: '+e.message); return; }
     var cats = loadData('categories');
     if (typeof cats[0] === 'string') {
         var newCats = [];
@@ -2309,7 +2315,6 @@ function deleteCategory(catId) {
         cats = newCats2;
     }
     saveData('categories', cats);
-    _apiDeleteCategory(cat.name).catch(function(e) { console.warn('服务器删除分类失败:', e.message); });
     navigateTo('category');
     addLog('删除分类: ' + cat.name);
     showToast('已删除分类"' + cat.name + '"');
@@ -2317,7 +2322,7 @@ function deleteCategory(catId) {
 
 function deleteCategoryFromEdit(catId) {
     closeModal();
-    setTimeout(function() { deleteCategory(catId); }, 200);
+    setTimeout(function() { deleteCategory(catId).catch(function(e) { console.warn(e); }); }, 200);
 }
 
 function toggleCategoryStatus(catId) {
@@ -2898,12 +2903,12 @@ function savePromotion() {
     addLog(`促销活动: ${existIdx!==-1?'编辑':'新增'} ${data.name} (${PROMO_TYPE_LABEL[type]||type})`);
     showToast('促销活动已保存');
 }
-function deletePromotion(prom) {
+async function deletePromotion(prom) {
     if(!confirm(`确定删除活动"${prom.name}"吗？`)) return;
+    try { await _apiDel('/api/promotions/' + prom.id); } catch(e) { alert('删除失败: '+e.message); return; }
     let promos = loadData('promotions');
     promos = promos.filter(x=>x.id!==prom.id);
     saveData('promotions', promos);
-    _apiDel('/api/promotions/' + prom.id).catch(function(e) { console.warn('服务器删除促销失败:', e.message); });
     navigateTo('promotion');
     addLog(`删除促销活动: ${prom.name}`);
     showToast('已删除');
@@ -3717,7 +3722,14 @@ pageRenderers['sales_stats'] = function() {
     return `<div class="page active">
         <div class="page-header"><div><h1>销售统计报表</h1><div class="breadcrumb">销售管理 / 统计报表</div></div><button class="btn btn-outline" onclick="navigateTo('sales_stats')" style="font-size:0.75rem;">🔄 刷新数据</button></div>
         <div class="page-body">
-            <div class="stats-grid" id="salesStatsCards"></div>
+            <div class="stats-grid" id="salesStatsCards">
+                <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num" id="statTodaySales">0</div><div class="stat-label">今日销售额</div></div>
+                <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num" id="statTodayOrders">0</div><div class="stat-label">今日订单数</div></div>
+                <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num" id="statMonthSales">0</div><div class="stat-label">本月销售额</div></div>
+                <div class="stat-card"><div class="stat-icon">💹</div><div class="stat-num" id="statMonthProfit">0</div><div class="stat-label">本月毛利</div></div>
+                <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-num" id="statAvgOrder">0</div><div class="stat-label">平均客单价</div></div>
+                <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num" id="statMonthCount">0</div><div class="stat-label">本月订单数</div></div>
+            </div>
             <div class="stats-chart-row">
                 <div class="chart-box"><h3>品类销售分布</h3><div id="categoryChart"></div></div>
                 <div class="chart-box"><h3>近7日销售趋势</h3><div id="dailyTrendChart"></div></div>
@@ -3725,24 +3737,39 @@ pageRenderers['sales_stats'] = function() {
         </div>
     </div>`;
 };
-var _lastSalesStats = null;
+
+function updateSalesStatCards(todaySales, todayOrderCount, monthSales, monthProfit, avgOrder, monthCount) {
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setVal('statTodaySales', '¥' + Math.round(todaySales).toLocaleString());
+    setVal('statTodayOrders', todayOrderCount);
+    setVal('statMonthSales', '¥' + Math.round(monthSales).toLocaleString());
+    setVal('statMonthProfit', '¥' + Math.round(monthProfit).toLocaleString());
+    setVal('statAvgOrder', '¥' + Math.round(avgOrder).toLocaleString());
+    setVal('statMonthCount', monthCount);
+}
 
 function init_sales_stats() {
     refreshCurrentTable = () => {
-    const orders = (loadData('salesOrders')||[]).filter(o=>o.orderNo&&o.items&&o.items.length>0);
+    const rawOrders = loadData('salesOrders')||[];
+    console.log('[stats] loadData salesOrders:', rawOrders.length, '条, ids:', rawOrders.slice(0,3).map(o=>o.id+'/'+o.orderNo));
+    const orders = rawOrders.filter(o=>o.orderNo&&o.items&&o.items.length>0);
+    console.log('[stats] after filter:', orders.length, '条');
     const normTime = t => {
         t = t || '';
         if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-        if (/(\d{4})\/(\d{1,2})\/(\d{1,2})/.test(t)) return t.replace(/(\d{4})\/(\d{1,2})\/(\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
+        if (/(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})/.test(t)) return t.replace(/(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})/,(_,y,m,d)=>y+'-'+m.padStart(2,'0')+'-'+d.padStart(2,'0'));
         const m = t.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
         if (m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
         return t.slice(0,10)||getToday();
     };
-    const normOrders = orders.map(o=>({...o, time: normTime(o.time)}));
+    const normOrders = orders.map(o=>({...o, time: normTime(o.time||o.orderDate||'')}));
     const today = getToday();
     const thisMonth = today.slice(0,7);
+    console.log('[stats] today:', today, 'thisMonth:', thisMonth);
+    console.log('[stats] normOrders times:', normOrders.slice(0,5).map(o=>o.time));
     let todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
     let monthOrders = normOrders.filter(o=>(o.time||'').includes(thisMonth));
+    console.log('[stats] todayOrders:', todayOrders.length, 'monthOrders:', monthOrders.length, 'normOrders:', normOrders.length);
     if (monthOrders.length === 0 && normOrders.length > 0) {
         monthOrders = normOrders;
         todayOrders = normOrders.filter(o=>(o.time||'').includes(today));
@@ -3761,25 +3788,9 @@ function init_sales_stats() {
         });
     });
     var monthProfit = monthSales - monthCost;
-    if (monthCount > 0) {
-        _lastSalesStats = { todaySales, monthSales, monthCount, avgOrder, monthProfit, monthCost, todayOrders, monthOrders };
-    } else if (_lastSalesStats) {
-        todaySales = _lastSalesStats.todaySales;
-        monthSales = _lastSalesStats.monthSales;
-        monthCount = _lastSalesStats.monthCount;
-        avgOrder = _lastSalesStats.avgOrder;
-        monthProfit = _lastSalesStats.monthProfit;
-        monthCost = _lastSalesStats.monthCost;
-        todayOrders = _lastSalesStats.todayOrders;
-        monthOrders = _lastSalesStats.monthOrders;
-    }
-    document.getElementById('salesStatsCards').innerHTML = `
-        <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-num count-up" data-target="${Math.round(todaySales)}">0</div><div class="stat-label">今日销售额</div></div>
-        <div class="stat-card"><div class="stat-icon">📋</div><div class="stat-num count-up" data-target="${todayOrders.length}">0</div><div class="stat-label">今日订单数</div></div>
-        <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-num count-up" data-target="${Math.round(monthSales)}">0</div><div class="stat-label">本月销售额</div></div>
-        <div class="stat-card"><div class="stat-icon">💹</div><div class="stat-num count-up" data-target="${Math.round(monthProfit)}">0</div><div class="stat-label">本月毛利</div></div>
-        <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-num count-up" data-target="${Math.round(avgOrder)}">0</div><div class="stat-label">平均客单价</div></div>
-        <div class="stat-card"><div class="stat-icon">📊</div><div class="stat-num count-up" data-target="${monthCount}">0</div><div class="stat-label">本月订单数</div></div>`;
+    console.log('[stats] RESULT todaySales:', todaySales, 'monthSales:', monthSales, 'monthCount:', monthCount, 'avgOrder:', avgOrder, 'monthProfit:', monthProfit);
+    // 直接更新卡片DOM（不依赖缓存，每次从loadData读取最新数据，与员工/会员卡片同模式）
+    updateSalesStatCards(todaySales, todayOrders.length, monthSales, monthProfit, avgOrder, monthCount);
     // Category distribution with canvas pie chart
     const catMap = {};
     monthOrders.forEach(o=>{
@@ -4145,15 +4156,15 @@ function toggleMemberStatus(m) {
     addLog(`会员${newStatus}: ${member.name}`);
     showToast(`会员"${member.name}"已${newStatus}`);
 }
-function deleteMember(m) {
+async function deleteMember(m) {
     if(!confirm(`确定删除会员"${m.name}"(卡号:${m.cardNo})吗？\n此操作不可恢复！`)) return;
+    try { await _apiDel('/api/members/' + m.id); } catch(e) { alert('删除失败: '+e.message); return; }
     let members = loadData('members');
     members = members.filter(x=>x.id!==m.id);
     saveData('members', members);
     let records = loadData('memberPointsRecords');
     records = records.filter(x=>x.memberId!==m.id);
     saveData('memberPointsRecords', records);
-    _apiDel('/api/members/' + m.id).catch(function(e) { console.warn('服务器删除会员失败:', e.message); });
     refreshCurrentTable();
     addLog(`删除会员: ${m.name}(${m.cardNo})`);
     showToast('已删除');
@@ -4401,6 +4412,7 @@ function deleteLevel(l) {
     levels = levels.filter(x=>x.name!==l.name);
     levels.sort((a,b)=>b.minSpent-a.minSpent);
     saveData('memberLevels', levels);
+    if (l.id) { _apiDel('/api/member-levels/' + l.id).catch(function(e) { console.warn('服务器删除等级失败:', e.message); }); }
     navigateTo('member_level');
     addLog(`删除会员等级: ${l.name}`);
     showToast('已删除等级"' + l.name + '"');
@@ -4730,6 +4742,7 @@ function deleteExchangeReward(r) {
     let rewards = loadData('exchangeRewards');
     rewards = rewards.filter(x=>x.id!==r.id);
     saveData('exchangeRewards', rewards);
+    _apiDel('/api/exchange-rewards/' + r.id).catch(function(e) { console.warn('服务器删除奖品失败:', e.message); });
     refreshCurrentTable();
     addLog(`删除奖品: ${r.name}`);
     showToast(`奖品"${r.name}"已删除`);
@@ -5186,6 +5199,7 @@ function addAlertSettingRow() {
 }
 function deleteAlertSetting(id) {
     if(!confirm('确定删除该预警规则吗？')) return;
+    _apiDel('/api/inventory-alert-settings/' + id).catch(function(e) { console.warn('服务器删除预警失败:', e.message); });
     let settings = loadData('inventoryAlertSettings');
     settings = settings.filter(s=>s.id!==id);
     saveData('inventoryAlertSettings', settings);
@@ -5254,6 +5268,7 @@ function saveZone() {
 function deleteZone(z) {
     if (!canEditWarehouse()) { showToast('只读权限，无法删除仓库区域'); return; }
     if(!confirm(`确定删除区域"${z.name}"吗？`)) return;
+    _apiDel('/api/warehouse-zones/' + z.id).catch(function(e) { console.warn('服务器删除区域失败:', e.message); });
     let zones = loadData('warehouseZones');
     zones = zones.filter(x=>x.id!==z.id);
     saveData('warehouseZones', zones);
@@ -5913,6 +5928,7 @@ function saveBudget() {
 }
 function deleteBudget(b) {
     if(!confirm(`确定删除预算项"${b.category}"吗？`)) return;
+    _apiDel('/api/finance-budget/' + b.id).catch(function(e) { console.warn('服务器删除预算失败:', e.message); });
     let budgets = loadData('financeBudget');
     budgets = budgets.filter(x=>x.id!==b.id);
     saveData('financeBudget', budgets);
@@ -6004,6 +6020,7 @@ function declareTax(t) {
 }
 function deleteTax(t) {
     if(!confirm(`确定删除"${t.taxName}"吗？`)) return;
+    _apiDel('/api/finance-tax/' + t.id).catch(function(e) { console.warn('服务器删除税务失败:', e.message); });
     let taxes = loadData('financeTax');
     taxes = taxes.filter(x=>x.id!==t.id);
     saveData('financeTax', taxes);
@@ -6061,6 +6078,7 @@ function updateLedger() {
 }
 function deleteLedger(l) {
     if(!confirm(`确定删除流水"${l.voucherNo}"吗？`)) return;
+    _apiDel('/api/finance-ledger/' + l.id).catch(function(e) { console.warn('服务器删除流水失败:', e.message); });
     let ledger = loadData('financeLedger');
     ledger = ledger.filter(x=>x.id!==l.id);
     saveData('financeLedger', ledger);
@@ -6152,6 +6170,9 @@ async function deleteEmployee(emp) {
     if(!confirm(`确定删除员工"${emp.name}"吗？此操作将同步清理该员工在所有子模块中的数据（排班、考勤、工资、岗位分配）。`)) return;
     const empId = parseInt(emp.id);
     const empIdStr = String(empId);
+    if (_apiToken) {
+        try { await _apiDel('/api/employees/' + empId); } catch(e) { alert('删除失败: '+e.message); return; }
+    }
     let employees = loadData('employees');
     employees = employees.filter(x=>parseInt(x.id)!==empId);
     // 级联清理：排班
@@ -6181,10 +6202,6 @@ async function deleteEmployee(emp) {
         }
     });
     if(posChanged) saveData('employeePositions', positions);
-    // 先删除服务器端记录，再保存本地
-    if (_apiToken) {
-        try { await _apiDel('/api/employees/' + empId); } catch(e) {}
-    }
     saveData('employees', employees);
     refreshCurrentTable();
     addLog(`删除员工: ${emp.name}（已同步清理排班/考勤/工资/岗位关联数据）`);
@@ -6980,6 +6997,7 @@ function doBindEmployee(pid) {
 }
 function deleteEmployeePosition(p) {
     if(!confirm(`确定删除岗位"${p.name}"吗？已关联的员工将被解除关联。`)) return;
+    _apiDel('/api/employee-positions/' + p.id).catch(function(e) { console.warn('服务器删除岗位失败:', e.message); });
     let positions = loadData('employeePositions');
     positions = positions.filter(x=>x.id!==p.id);
     saveData('employeePositions', positions);
@@ -7160,18 +7178,18 @@ function toggleSupplierStatus(s) {
     addLog(`供应商${actionText}: ${supplier.name}`);
     showToast(`供应商"${supplier.name}"已${newStatus}`);
 }
-function deleteSupplier(s) {
+async function deleteSupplier(s) {
     const products = loadData('products');
     const relatedProducts = products.filter(p=>p.supplier===s.name);
     const warnMsg = relatedProducts.length>0 ? `\n\n⚠️ 该供应商关联了 ${relatedProducts.length} 个商品，删除后这些商品的供应商信息将清空。` : '';
     if(!confirm(`确定删除供应商"${s.name}"(编号:${s.code})吗？${warnMsg}\n此操作不可恢复！`)) return;
+    try { await _apiDel('/api/suppliers/' + s.id); } catch(e) { alert('删除失败: '+e.message); return; }
     let suppliers = loadData('suppliers');
     suppliers = suppliers.filter(x=>x.id!==s.id);
     saveData('suppliers', suppliers);
     // 清空关联商品的供应商
     relatedProducts.forEach(p=>{p.supplier='';});
     saveData('products', products);
-    _apiDel('/api/suppliers/' + s.id).catch(function(e) { console.warn('服务器删除供应商失败:', e.message); });
     refreshCurrentTable();
     addLog(`删除供应商: ${s.name}(${s.code})`);
     showToast('已删除');
@@ -7380,12 +7398,12 @@ function updateContractStats() {
     if (elActive) elActive.textContent = contracts.filter(c=>c.status==='生效中').length;
     if (elExpiring) elExpiring.textContent = contracts.filter(c=>c.status==='即将到期').length;
 }
-function deleteContract(c) {
+async function deleteContract(c) {
     if(!confirm(`确定删除合同"${c.contractNo}"(${c.supplierName})吗？`)) return;
+    try { await _apiDel('/api/supplier-contracts/' + c.id); } catch(e) { alert('删除失败: '+e.message); return; }
     let contracts = loadData('supplierContracts');
     contracts = contracts.filter(x=>x.id!==c.id);
     saveData('supplierContracts', contracts);
-    _apiDel('/api/supplier-contracts/' + c.id).catch(function(e) { console.warn('服务器删除合同失败:', e.message); });
     syncContractSupplierStatus();
     refreshCurrentTable();
     updateContractStats();
@@ -7530,6 +7548,7 @@ function saveEvaluation() {
 }
 function deleteEvaluation(e) {
     if(!confirm(`确定删除对"${e.supplierName}"的评价吗？`)) return;
+    _apiDel('/api/supplier-evaluations/' + e.id).catch(function(e) { console.warn('服务器删除评价失败:', e.message); });
     let evaluations = loadData('supplierEvaluations');
     evaluations = evaluations.filter(x=>x.id!==e.id);
     saveData('supplierEvaluations', evaluations);
@@ -8088,6 +8107,7 @@ function doEditDept(did) {
 }
 function deleteDept(d) {
     if(!confirm(`确定删除部门"${d.name}"吗？`)) return;
+    _apiDel('/api/departments/' + d.id).catch(function(e) { console.warn('服务器删除部门失败:', e.message); });
     let depts = loadData('departments');
     depts = depts.filter(x=>x.id!==d.id);
     saveData('departments', depts);
@@ -8153,6 +8173,7 @@ function doEditPost(pid) {
 }
 function deletePost(p) {
     if(!confirm(`确定删除岗位"${p.name}"吗？`)) return;
+    _apiDel('/api/employee-positions/' + p.id).catch(function(e) { console.warn('服务器删除岗位失败:', e.message); });
     let posts = loadData('positions');
     posts = posts.filter(x=>x.id!==p.id);
     saveData('positions', posts);
@@ -8576,6 +8597,7 @@ function doEditDict(did) {
 }
 function deleteDict(d) {
     if(!confirm(`确定删除字典项"${d.dictLabel}"吗？`)) return;
+    _apiDel('/api/dict-items/' + d.id).catch(function(e) { console.warn('服务器删除字典失败:', e.message); });
     let dict = loadData('dictItems');
     dict = dict.filter(x=>x.id!==d.id);
     saveData('dictItems', dict);
@@ -8653,6 +8675,7 @@ function doEditNotice(nid) {
 }
 function deleteNotice(n) {
     if(!confirm(`确定删除通知"${n.title}"吗？`)) return;
+    _apiDel('/api/notices/' + n.id).catch(function(e) { console.warn('服务器删除通知失败:', e.message); });
     let notices = loadData('notices');
     notices = notices.filter(x=>x.id!==n.id);
     saveData('notices', notices);
@@ -8790,6 +8813,7 @@ function doExecuteMaintenance(rid) {
 function deleteMaintenance(rid) {
     rid = parseInt(rid);
     if(!confirm('确定删除此维护记录吗？此操作不可恢复。')) return;
+    _apiDel('/api/maintenance-records/' + rid).catch(function(e) { console.warn('服务器删除维护记录失败:', e.message); });
     const records = loadData('maintenanceRecords');
     const idx = records.findIndex(x=>x.id===rid);
     if(idx===-1) return;

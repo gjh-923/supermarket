@@ -103,6 +103,24 @@ function _syncToSqlTable(storeKey, rows) {
   if (storeKey === 'categories') {
     // categories 仅存 data_store，无对应 SQL 表结构需要同步
   }
+
+  if (storeKey === 'salesOrders') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO sales_orders
+      (id, order_no, member_id, member_name, member_phone, items, total_amount, discount_amount, final_amount, coupon_id, coupon_name, coupon_discount, pay_method, operator, order_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const o of items) {
+        stmt.run(
+          o.id, o.orderNo || '', o.memberId || null, o.memberName || '', o.memberPhone || '',
+          JSON.stringify(o.items || []), o.originalAmount || 0, o.discountAmount || 0,
+          o.totalAmount || 0, o.couponId || null, o.couponName || '',
+          o.couponDiscount || 0, o.paymentMethod || o.payMethod || '现金',
+          o.cashier || o.operator || '', o.time || o.orderDate || ''
+        );
+      }
+    });
+    insertMany(rows);
+  }
 }
 
 function syncAffectedTablesToDataStore() {
