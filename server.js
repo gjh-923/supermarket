@@ -133,6 +133,23 @@ function _syncToSqlTable(storeKey, rows) {
     });
     insertMany(rows);
   }
+
+  // promotions: DELETE + re-INSERT to propagate deletions
+  if (storeKey === 'promotions') {
+    const delStmt = db.prepare('DELETE FROM promotions');
+    const insStmt = db.prepare(`INSERT INTO promotions (id, name, type, product_ids, categories, rule_json, start_date, end_date, status, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const replaceAll = db.transaction((items) => {
+      delStmt.run();
+      for (const p of items) {
+        insStmt.run(p.id, p.name || '', p.type || '', JSON.stringify(p.productIds || p.product_ids || []),
+          JSON.stringify(p.categories || []), JSON.stringify(p.ruleJson || p.rule_json || {}),
+          p.startDate || p.start_date || '', p.endDate || p.end_date || '', p.status || 'active',
+          p.description || '');
+      }
+    });
+    replaceAll(rows);
+  }
 }
 
 function syncAffectedTablesToDataStore() {
@@ -219,6 +236,17 @@ function syncAffectedTablesToDataStore() {
   upsert.run('schedules', JSON.stringify(schedules.map(s => ({
     id: s.id, employee_id: s.employee_id, employee_name: s.employee_name,
     date: s.date, shift: s.shift
+  }))));
+
+  // Promotions
+  const promotions = db.prepare('SELECT * FROM promotions ORDER BY id DESC').all();
+  upsert.run('promotions', JSON.stringify(promotions.map(p => ({
+    id: p.id, name: p.name, type: p.type,
+    productIds: typeof p.product_ids === 'string' ? JSON.parse(p.product_ids) : (p.product_ids || []),
+    categories: typeof p.categories === 'string' ? JSON.parse(p.categories) : (p.categories || []),
+    ruleJson: typeof p.rule_json === 'string' ? JSON.parse(p.rule_json) : (p.rule_json || {}),
+    startDate: p.start_date, endDate: p.end_date, status: p.status,
+    description: p.description
   }))));
 }
 

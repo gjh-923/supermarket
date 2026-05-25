@@ -450,23 +450,29 @@ async function _apiSyncAll() {
                 const latest = localStorage.getItem('sms_' + camelKey);
                 let latestParsed = parsed;
                 try { if (latest) latestParsed = JSON.parse(latest); } catch(e) {}
-                const localMap = new Map(latestParsed.map(d => [d.id, d]));
-                // 智能合并：本地有值的字段保留，本地空/缺失的字段从服务器补充
-                for (const d of data) {
-                    if (!localMap.has(d.id)) {
-                        localMap.set(d.id, d);
-                    } else {
-                        const local = localMap.get(d.id);
-                        for (const key of Object.keys(d)) {
-                            const sv = d[key];
+                // 服务器数据为权威：存在性以服务器为准，字段值智能合并
+                const serverMap = new Map(data.map(d => [d.id, d]));
+                const merged = [];
+                // 处理本地已有的记录
+                for (const local of latestParsed) {
+                    const sv = serverMap.get(local.id);
+                    if (sv) {
+                        // 服务器有：字段智能合并（本地非空保留，空字段从服务器补）
+                        for (const key of Object.keys(sv)) {
                             const lv = local[key];
-                            if (sv != null && (lv == null || lv === '' || (Array.isArray(lv) && lv.length === 0))) {
-                                local[key] = sv;
+                            if (sv[key] != null && (lv == null || lv === '' || (Array.isArray(lv) && lv.length === 0))) {
+                                local[key] = sv[key];
                             }
                         }
+                        merged.push(local);
+                        serverMap.delete(local.id);
                     }
+                    // 本地有但服务器没有 → 已被其他用户删除，丢弃
                 }
-                const merged = Array.from(localMap.values());
+                // 服务器独有的新记录（其他用户添加的）
+                for (const [id, sv] of serverMap) {
+                    merged.push(sv);
+                }
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
                 const normalized = _normalizeData(camelKey, merged);
                 // 安全保护：如果合并后的记录数比本地原始还少，拒绝写入（防止数据丢失）
