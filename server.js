@@ -378,14 +378,27 @@ function _syncToSqlTable(storeKey, rows) {
 
   // === inventoryCheckTasks ===
   if (storeKey === 'inventoryCheckTasks') {
-    const stmt = db.prepare(`INSERT OR REPLACE INTO inventory_check_tasks
+    const taskStmt = db.prepare(`INSERT OR REPLACE INTO inventory_check_tasks
       (id, task_no, name, warehouse_zone, status, checker, check_date)
       VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const itemStmt = db.prepare(`INSERT OR REPLACE INTO inventory_check_items
+      (id, task_id, product_id, product_name, system_stock, actual_stock, diff, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const delItemsStmt = db.prepare('DELETE FROM inventory_check_items WHERE task_id = ?');
     const insertMany = db.transaction((items) => {
       for (const t of items) {
-        stmt.run(t.id, t.taskNo || t.task_no || '', t.name || '',
+        taskStmt.run(t.id, t.taskNo || t.task_no || '', t.name || '',
           t.warehouseZone || t.warehouse_zone || '', t.status || '待盘点',
           t.checker || '', t.checkDate || t.check_date || '');
+        // 同步盘点明细到 inventory_check_items
+        if (Array.isArray(t.items) && t.items.length > 0) {
+          delItemsStmt.run(t.id);
+          for (const it of t.items) {
+            itemStmt.run(it.id, t.id, it.productId || it.product_id || null,
+              it.productName || it.product_name || '', it.systemStock || it.system_stock || 0,
+              it.actualStock || it.actual_stock || 0, it.diff || 0, it.note || '');
+          }
+        }
       }
     });
     insertMany(rows);
@@ -714,11 +727,19 @@ function syncAffectedTablesToDataStore() {
     maxStock: a.max_stock, expiryDays: a.expiry_days, enabled: !!a.enabled
   }))));
 
-  // InventoryCheckTasks
+  // InventoryCheckTasks (join with items)
   const inventoryCheckTasks = db.prepare('SELECT * FROM inventory_check_tasks ORDER BY id DESC').all();
-  upsert.run('inventoryCheckTasks', JSON.stringify(inventoryCheckTasks.map(t => ({
-    id: t.id, taskNo: t.task_no, name: t.name, warehouseZone: t.warehouse_zone,
-    status: t.status, checker: t.checker, checkDate: t.check_date, createdAt: t.created_at
+  const allCheckItems = db.prepare('SELECT * FROM inventory_check_items ORDER BY id').all();
+  upsert.run('inventoryCheckTasks', JSON.stringify(inventoryCheckTasks.map(t => {
+    const taskItems = allCheckItems.filter(i => i.task_id === t.id);
+    return {
+      id: t.id, taskNo: t.task_no, name: t.name, warehouseZone: t.warehouse_zone,
+      status: t.status, checker: t.checker, checkDate: t.check_date, createdAt: t.created_at,
+      items: taskItems.map(i => ({
+        id: i.id, taskId: i.task_id, productId: i.product_id, productName: i.product_name,
+        systemStock: i.system_stock, actualStock: i.actual_stock, diff: i.diff, note: i.note
+      }))
+    };
   }))));
 
   // InventoryCheckItems
@@ -1695,6 +1716,7 @@ app.post('/api/inventory-records', authMiddleware, (req, res) => {
     .run(r.productId, product.name, r.type || '入库', r.qty || 0, beforeStock, afterStock, r.operator || req.user.name, r.note || '');
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
     .run(req.user.name, `${r.type || '库存操作'}: ${product.name} x${r.qty || 0}`);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('记录添加成功'));
 });
 
@@ -1782,6 +1804,7 @@ app.post('/api/inventory-alert-settings', authMiddleware, (req, res) => {
   const s = req.body;
   db.prepare('INSERT INTO inventory_alert_settings (product_category, min_stock, max_stock, expiry_days, enabled) VALUES (?, ?, ?, ?, ?)')
     .run(s.productCategory || '全部', s.minStock || 50, s.maxStock || 2000, s.expiryDays || 30, s.enabled ? 1 : 0);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('添加成功'));
 });
 
@@ -1789,11 +1812,13 @@ app.put('/api/inventory-alert-settings/:id', authMiddleware, (req, res) => {
   const s = req.body;
   db.prepare('UPDATE inventory_alert_settings SET product_category=?, min_stock=?, max_stock=?, expiry_days=?, enabled=? WHERE id=?')
     .run(s.productCategory, s.minStock || 50, s.maxStock || 2000, s.expiryDays || 30, s.enabled ? 1 : 0, req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('修改成功'));
 });
 
 app.delete('/api/inventory-alert-settings/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM inventory_alert_settings WHERE id = ?').run(req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 
@@ -1808,6 +1833,7 @@ app.post('/api/inventory-check-tasks', authMiddleware, (req, res) => {
   const t = req.body;
   db.prepare('INSERT INTO inventory_check_tasks (task_no, name, warehouse_zone, status, checker, check_date) VALUES (?, ?, ?, ?, ?, ?)')
     .run(t.taskNo || ('PD' + Date.now()), t.name, t.warehouseZone || '', t.status || '待盘点', t.checker || req.user.name, t.checkDate || '');
+  syncAffectedTablesToDataStore();
   res.json(okMsg('添加成功'));
 });
 
@@ -1815,11 +1841,13 @@ app.put('/api/inventory-check-tasks/:id', authMiddleware, (req, res) => {
   const t = req.body;
   db.prepare('UPDATE inventory_check_tasks SET name=?, warehouse_zone=?, status=?, checker=?, check_date=? WHERE id=?')
     .run(t.name, t.warehouseZone || '', t.status || '待盘点', t.checker, t.checkDate || '', req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('修改成功'));
 });
 
 app.delete('/api/inventory-check-tasks/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM inventory_check_tasks WHERE id = ?').run(req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 
@@ -2704,6 +2732,9 @@ try {
     }
   }
 } catch(e) { /* migration may fail if tables don't exist yet */ }
+
+// 启动时同步 SQL 表到 data_store，确保多用户数据可用
+syncAffectedTablesToDataStore();
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`超市管理系统后端已启动: http://localhost:${PORT}`);
