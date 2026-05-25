@@ -567,33 +567,13 @@ function _normalizeData(key, data) {
     }
     if (key === 'schedules') {
         const seen = new Map();
-        const deduped = [];
-        data.forEach(s => {
-            const k = s.employee_id + '_' + (s.date||'');
-            const existing = seen.get(k);
-            if (!existing) { seen.set(k, s); deduped.push(s); }
-            else if (typeof s.id === 'string' && typeof existing.id === 'number') {
-                const idx = deduped.indexOf(existing);
-                if (idx !== -1) deduped[idx] = s;
-                seen.set(k, s);
-            }
-        });
-        return deduped;
+        data.forEach(s => { seen.set(s.employee_id + '_' + (s.date||''), s); });
+        return Array.from(seen.values());
     }
     if (key === 'attendances') {
         const seen = new Map();
-        const deduped = [];
-        data.forEach(a => {
-            const k = a.employee_id + '_' + (a.att_date||a.date||'');
-            const existing = seen.get(k);
-            if (!existing) { seen.set(k, a); deduped.push(a); }
-            else if (typeof a.id === 'string' && typeof existing.id === 'number') {
-                const idx = deduped.indexOf(existing);
-                if (idx !== -1) deduped[idx] = a;
-                seen.set(k, a);
-            }
-        });
-        return deduped;
+        data.forEach(a => { seen.set(a.employee_id + '_' + (a.att_date||a.date||''), a); });
+        return Array.from(seen.values());
     }
     if (key === 'purchaseOrders') {
         return data.map(o => {
