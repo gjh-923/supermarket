@@ -3496,11 +3496,14 @@ function checkout() {
         couponCost = parseInt(document.getElementById('posCouponSelect')?.selectedOptions[0]?.dataset?.cost||'0');
         if (posMember.points < couponCost) { showToast(`积分不足！需要${couponCost}积分，当前${posMember.points}积分`); return; }
     }
-    // Calculate total with all active promotions
+    // Calculate original total (full retail price before any discounts)
+    let originalTotal = 0;
     let total = 0;
     let promoDescs = [];
     posCart.forEach(item => {
         const product = loadData('products').find(p => p.id === item.productId);
+        const price = product ? product.retailPrice || item.price : item.price;
+        originalTotal += price * item.qty;
         if (product) {
             const result = getActivePromoPrice(product, item.qty, !!posMember);
             total += result.finalPrice;
@@ -3509,7 +3512,9 @@ function checkout() {
             total += item.price * item.qty;
         }
     });
-    const promoNote = promoDescs.length > 0 ? '\n促销优惠: ' + [...new Set(promoDescs)].join(', ') : '';
+    // 商品促销优惠金额
+    const itemPromoAmount = Math.max(0, originalTotal - total);
+    const promoNote = promoDescs.length > 0 ? `\n商品促销: -¥${formatMoney(itemPromoAmount)} (${[...new Set(promoDescs)].join(', ')})` : '';
     // Apply bundle discount
     let bundleDiscount = 0;
     let bundleInfo = '';
@@ -3529,7 +3534,8 @@ function checkout() {
         memberInfo = `\n会员: ${posMember.name}(${posMember.level}, ${discountRate}折)`;
     }
     const totalAfterMember = Math.round(total * discountRate) / 100;
-    const discountNote = discountRate < 100 ? `\n会员折后: ¥${formatMoney(totalAfterMember)} (${discountRate}折)` : '';
+    const memberDiscountAmount = Math.max(0, total - totalAfterMember);
+    const discountNote = discountRate < 100 ? `\n会员折扣: -¥${formatMoney(memberDiscountAmount)} (${discountRate}折)` : '';
     // Apply coupon discount（会员折后抵扣，券面额不超过折后应付）
     const actualCouponDiscount = Math.min(couponDiscount, totalAfterMember);
     if (actualCouponDiscount > 0) {
@@ -3539,7 +3545,7 @@ function checkout() {
         }
     }
     const finalAmount = Math.max(0, totalAfterMember - actualCouponDiscount);
-    if(!confirm(`合计: ¥${formatMoney(total)}${bundleInfo}${promoNote}${discountNote}${couponInfo}${memberInfo}\n支付方式: ${payMethod}\n确认结算吗？`)) return;
+    if(!confirm(`原价: ¥${formatMoney(originalTotal)}${promoNote}${bundleInfo}${discountNote}${couponInfo}\n实付: ¥${formatMoney(finalAmount)}${memberInfo}\n支付方式: ${payMethod}\n确认结算吗？`)) return;
 
     // 尝试 API 结算
     const cartForApi = posCart.map(item => ({
@@ -3575,7 +3581,7 @@ function checkout() {
         _dedupSalesOrders();
     }).catch(async e => {
         console.warn('API结算失败，使用本地结算:', e.message);
-        localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
+        localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod, originalTotal);
     }).finally(() => {
         posCart = [];
         posMember = null;
@@ -3683,7 +3689,7 @@ function _dedupSalesOrders() {
 }
 
 // 本地结算（API 不可用时的降级方案）
-function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod) {
+function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod, originalTotal) {
     // 扣减库存
     const products = loadData('products');
     posCart.forEach(item => {
@@ -3705,8 +3711,8 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
     const orders = loadData('salesOrders');
     orders.push({
         id: makeId(), orderNo, items: JSON.parse(JSON.stringify(posCart)),
-        totalAmount: finalAmount, originalAmount: total, discountRate,
-        promoAmount: actualCouponDiscount + bundleDiscount,
+        totalAmount: finalAmount, originalAmount: originalTotal || total, discountRate,
+        promoAmount: Math.max(0, (originalTotal||total) - total - bundleDiscount),
         couponDiscount: actualCouponDiscount, bundleDiscount,
         memberId: posMember?.id||null, memberName: posMember?.name||'',
         time: getNow(), cashier: getCashierName(),
