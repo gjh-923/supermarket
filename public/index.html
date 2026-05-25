@@ -455,7 +455,7 @@ async function _apiSyncAll() {
                 var localMap = new Map(latestParsed.map(function(d){return [d.id, d];}));
                 var merged;
                 // 数值类表格（products, salesOrders等）：服务器完全权威，保证多用户数据一致
-                var numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords'];
+                var numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords', 'inventoryCheckTasks', 'inventoryAlertSettings'];
                 if (numericTables.indexOf(camelKey) !== -1) {
                     // 服务器数据为基准，客户端补充新记录
                     var serverMap = new Map(data.map(function(d){return [d.id, d];}));
@@ -497,19 +497,6 @@ async function _apiSyncAll() {
                                 var finFields = ['totalSpent', 'points', 'cumulativePoints', 'level', 'lastConsumeDate'];
                                 for (var _f = 0; _f < finFields.length; _f++) {
                                     if (sv[finFields[_f]] != null) local[finFields[_f]] = sv[finFields[_f]];
-                                }
-                            }
-                            // 库存盘点/预警：多用户共享数据，服务端状态为权威（其他用户可能已更新）
-                            if (camelKey === 'inventoryCheckTasks') {
-                                var invFields = ['status', 'checker', 'checkDate', 'completeTime', 'items'];
-                                for (var _ic = 0; _ic < invFields.length; _ic++) {
-                                    if (sv[invFields[_ic]] != null) local[invFields[_ic]] = sv[invFields[_ic]];
-                                }
-                            }
-                            if (camelKey === 'inventoryAlertSettings') {
-                                var alertFields = ['productCategory', 'minStock', 'maxStock', 'expiryDays', 'enabled'];
-                                for (var _ia = 0; _ia < alertFields.length; _ia++) {
-                                    if (sv[alertFields[_ia]] != null) local[alertFields[_ia]] = sv[alertFields[_ia]];
                                 }
                             }
                             merged.push(local);
