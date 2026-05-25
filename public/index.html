@@ -460,7 +460,8 @@ async function _apiSyncAll() {
                 // 数值类表格（products, salesOrders等）：服务器完全权威，保证多用户数据一致
                 var numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords'];
                 if (numericTables.indexOf(camelKey) !== -1) {
-                    // 服务器数据直接覆盖本地，多用户数据完全统一
+                    // 服务器数据为基准，客户端补充新记录
+                    var serverMap = new Map(data.map(function(d){return [d.id, d];}));
                     for (var _i = 0; _i < data.length; _i++) {
                         var d = data[_i];
                         var local = localMap.get(d.id);
@@ -471,6 +472,12 @@ async function _apiSyncAll() {
                                     d[_k] = local[_k];
                                 }
                             }
+                        }
+                    }
+                    // 保留本地独有记录（新增但尚未同步到服务器的），防止数据丢失
+                    for (var _j2 = 0; _j2 < latestParsed.length; _j2++) {
+                        if (!serverMap.has(latestParsed[_j2].id)) {
+                            data.push(latestParsed[_j2]);
                         }
                     }
                     merged = data;
