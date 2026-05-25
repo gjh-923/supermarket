@@ -446,6 +446,10 @@ async function _apiSyncAll() {
             if (Array.isArray(data) && data.length === 0) {
                 continue;
             }
+            // 本地有未推送的变更（增/删/改），跳过同步。等推送完成后由debounced sync重新拉取最新数据合并
+            if (_dirtyKeys[camelKey]) {
+                continue;
+            }
             // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
             if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0 && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
                 // 重新读localStorage，以最新状态为基础（同步期间可能有增/删操作）
@@ -1158,19 +1162,20 @@ function saveData(key, data) {
             if (json.code !== 0) {
                 console.warn('[saveData] push failed for ' + key + ':', json.msg || json.message);
                 showToast('数据同步失败: ' + (json.msg || json.message || '未知错误'));
+                return;  // 推送失败，保留 _dirtyKeys 标记，防止 auto-sync 用旧数据覆盖
             }
-        }).catch(function(e) {
-            console.warn('[saveData] push network error for ' + key + ':', e.message);
-            showToast('网络同步失败，请检查网络连接');
-        }).finally(function() {
-            delete _dirtyKeys[key];  // 清除脏标记
-            // 等 push 完成后再拉回，避免拉到服务端旧数据覆盖本地新数据
+            // 推送成功：清除脏标记，延迟回拉确保与服务端一致
+            delete _dirtyKeys[key];
             if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
             _syncDebounceTimer = setTimeout(async function() {
                 _syncDebounceTimer = null;
                 await _apiSyncAll();
                 _refreshCurrentView();
             }, 500);
+        }).catch(function(e) {
+            console.warn('[saveData] push network error for ' + key + ':', e.message);
+            showToast('网络同步失败，请检查网络连接');
+            // 网络错误：保留 _dirtyKeys 标记，防止 auto-sync 用旧数据覆盖
         });
     }
 }
