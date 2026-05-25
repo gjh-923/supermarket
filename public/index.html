@@ -3959,6 +3959,7 @@ function updateMemberStats() {
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
+    autoMatchAllMemberLevels();
     refreshCurrentTable = () => {
         let data = loadData('members');
         if (currentMemberStatusFilter !== '全部') {
