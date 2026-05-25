@@ -1879,10 +1879,10 @@ function seedDefaultData() {
 
     // Default member levels
     const levels = [
-      { name: '普通会员', minSpent: 0, discount: 100, pointsRate: 1, cardColor: '#9e9e9e', benefits: '消费1元积1分 | 新人专享优惠券 | 每周三会员特价' },
-      { name: '白银会员', minSpent: 5000, discount: 97, pointsRate: 1.2, cardColor: '#c0c0c0', benefits: '9.7折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
-      { name: '黄金会员', minSpent: 20000, discount: 95, pointsRate: 1.5, cardColor: '#ffd700', benefits: '9.5折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验' },
-      { name: '钻石会员', minSpent: 50000, discount: 90, pointsRate: 2, cardColor: '#b9f2ff', benefits: '9折优惠 | 2倍积分加速 | 每月8号双倍积分 | 生日月赠1000积分+蛋糕券 | 专属客服经理 | 免费停车3小时 | 48小时无忧退换 | 企业团购优惠' }
+      { name: '普通会员', minSpent: 0, discount: 100, pointsRate: 1, cardColor: '#8D6E63', benefits: '消费1元积1分 | 新人专享优惠券 | 每周三会员特价日' },
+      { name: '白银会员', minSpent: 1000, discount: 96, pointsRate: 1.2, cardColor: '#607D8B', benefits: '9.6折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
+      { name: '黄金会员', minSpent: 5000, discount: 93, pointsRate: 1.5, cardColor: '#FF9800', benefits: '9.3折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验 | 免费停车2小时' },
+      { name: '钻石会员', minSpent: 20000, discount: 88, pointsRate: 2, cardColor: '#2196F3', benefits: '尊享8.8折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' }
     ];
     const lvStmt = db.prepare('INSERT INTO member_levels (name, min_spent, discount, points_rate, card_color, benefits) VALUES (?, ?, ?, ?, ?, ?)');
     for (const l of levels) lvStmt.run(l.name, l.minSpent, l.discount, l.pointsRate, l.cardColor, l.benefits);
@@ -2023,6 +2023,41 @@ try {
     let changed = false;
     members.forEach(m => { if (m.level === '青铜会员') { m.level = '普通会员'; changed = true; } });
     if (changed) db.prepare(`UPDATE data_store SET data = ? WHERE key = 'members'`).run(JSON.stringify(members));
+  }
+} catch(e) { /* migration may fail if tables don't exist yet */ }
+
+// Migrate: reset member_levels thresholds to correct defaults
+try {
+  const correctLevels = [
+    { name: '普通会员', minSpent: 0, discount: 100, pointsRate: 1, cardColor: '#8D6E63', benefits: '消费1元积1分 | 新人专享优惠券 | 每周三会员特价日' },
+    { name: '白银会员', minSpent: 1000, discount: 96, pointsRate: 1.2, cardColor: '#607D8B', benefits: '9.6折优惠 | 1.2倍积分加速 | 每月8号会员日双倍积分 | 生日当月赠200积分' },
+    { name: '黄金会员', minSpent: 5000, discount: 93, pointsRate: 1.5, cardColor: '#FF9800', benefits: '9.3折优惠 | 1.5倍积分加速 | 每月8号双倍积分 | 生日当月赠500积分 | 专属客服通道 | 新品优先体验 | 免费停车2小时' },
+    { name: '钻石会员', minSpent: 20000, discount: 88, pointsRate: 2, cardColor: '#2196F3', benefits: '尊享8.8折全场优惠 | 2倍积分极速累积 | 每月8号三倍积分狂欢日 | 生日当月赠2000积分+定制蛋糕券 | 专属客户经理1对1服务 | 全年免费停车5小时 | 72小时无忧退换货 | 企业团购专属折扣通道 | 年度VIP答谢盛典邀请函 | 新品首发优先购买权 | 专属收银绿色通道免排队 | 免费礼品包装服务 | 季度专属品鉴会' }
+  ];
+  const stmt = db.prepare('UPDATE member_levels SET min_spent=?, discount=?, points_rate=?, card_color=?, benefits=? WHERE name=?');
+  for (const l of correctLevels) {
+    stmt.run(l.minSpent, l.discount, l.pointsRate, l.cardColor, l.benefits, l.name);
+  }
+  // Also fix data_store
+  const dsRow = db.prepare("SELECT data FROM data_store WHERE key = 'memberLevels'").get();
+  if (dsRow && dsRow.data) {
+    const dsLevels = JSON.parse(dsRow.data);
+    let dsChanged = false;
+    for (const l of dsLevels) {
+      const correct = correctLevels.find(c => c.name === l.name);
+      if (correct && (l.minSpent !== correct.minSpent || l.discount !== correct.discount)) {
+        l.minSpent = correct.minSpent;
+        l.discount = correct.discount;
+        l.pointsRate = correct.pointsRate;
+        l.cardColor = correct.cardColor;
+        l.benefits = correct.benefits;
+        dsChanged = true;
+      }
+    }
+    if (dsChanged) {
+      db.prepare("UPDATE data_store SET data = ? WHERE key = 'memberLevels'").run(JSON.stringify(dsLevels));
+      console.log('[migrate] memberLevels thresholds reset to correct defaults');
+    }
   }
 } catch(e) { /* migration may fail if tables don't exist yet */ }
 
