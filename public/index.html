@@ -187,7 +187,7 @@
         .shift-中班 { background: #e3f2fd; color: #1565c0; }
         .shift-晚班 { background: #f3e5f5; color: #7b1fa2; }
         .shift-休息 { background: #fce4e4; color: #c23d2e; }
-        .att-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .att-stats { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; margin-bottom: 16px; }
         .att-stat-card { background: white; border-radius: 16px; padding: 16px; text-align: center; box-shadow: 0 2px 6px rgba(0,0,0,0.03); }
         .att-stat-card .val { font-size: 1.6rem; font-weight: 700; }
         .att-stat-card .lbl { font-size: 0.7rem; color: #819e73; margin-top: 2px; }
@@ -6599,6 +6599,7 @@ pageRenderers['employee_attendance'] = function() {
     const earlyDays = monthAtt.filter(a=>a.status==='早退').length;
     const absentDays = monthAtt.filter(a=>a.status==='旷工').length;
     const overtimeDays = monthAtt.filter(a=>a.status==='加班').length;
+    const leaveDays = monthAtt.filter(a=>a.status==='请假').length;
     let tbodyHtml = '';
     employees.forEach(e=>{
         const eAtt = monthAtt.filter(a=>String(a.employee_id)===String(e.id));
@@ -6607,6 +6608,7 @@ pageRenderers['employee_attendance'] = function() {
         const early = eAtt.filter(a=>a.status==='早退').length;
         const absent = eAtt.filter(a=>a.status==='旷工').length;
         const overtime = eAtt.filter(a=>a.status==='加班').length;
+        const leave = eAtt.filter(a=>a.status==='请假').length;
         const rate = totalDays>0 ? Math.round(normal/totalDays*100) : 0;
         const rateColor = rate>=90 ? '#3b9e5c' : (rate>=70 ? '#e6a817' : '#c23d2e');
         tbodyHtml += `<tr>
@@ -6617,6 +6619,7 @@ pageRenderers['employee_attendance'] = function() {
             <td style="color:#e67e22;">${early}</td>
             <td style="color:#c23d2e;">${absent}</td>
             <td style="color:#2563eb;">${overtime}</td>
+            <td style="color:#8e44ad;">${leave}</td>
             <td><span class="action-link" onclick="empAttDetail(${e.id},'${e.name}')">详情</span></td>
         </tr>`;
     });
@@ -6639,10 +6642,11 @@ pageRenderers['employee_attendance'] = function() {
                 <div class="att-stat-card"><div class="val" style="color:#e67e22;">${earlyDays}</div><div class="lbl">早退</div></div>
                 <div class="att-stat-card"><div class="val" style="color:#c23d2e;">${absentDays}</div><div class="lbl">旷工</div></div>
                 <div class="att-stat-card"><div class="val" style="color:#2563eb;">${overtimeDays}</div><div class="lbl">加班</div></div>
+                <div class="att-stat-card"><div class="val" style="color:#8e44ad;">${leaveDays}</div><div class="lbl">请假</div></div>
             </div>
             <div class="table-wrap"><table class="data-table">
-                <thead><tr><th>员工</th><th>部门</th><th>职位</th><th>出勤率</th><th>正常</th><th>迟到</th><th>早退</th><th>旷工</th><th>加班</th><th>操作</th></tr></thead>
-                <tbody>${tbodyHtml||'<tr><td colspan="10" style="text-align:center;color:#819e73;">暂无数据</td></tr>'}</tbody>
+                <thead><tr><th>员工</th><th>部门</th><th>职位</th><th>出勤率</th><th>正常</th><th>迟到</th><th>早退</th><th>旷工</th><th>加班</th><th>请假</th><th>操作</th></tr></thead>
+                <tbody>${tbodyHtml||'<tr><td colspan="11" style="text-align:center;color:#819e73;">暂无数据</td></tr>'}</tbody>
             </table></div>
         </div>
     </div>`;
