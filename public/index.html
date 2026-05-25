@@ -1939,18 +1939,21 @@ async function saveProduct() {
     if(!name||!code) { alert('商品名称和编号不能为空'); return; }
     const products = loadData('products');
     const existingImage = id ? (products.find(p=>p.id==id)?.image||'') : '';
-    // 优先使用base64本地存储（随数据同步持久化），服务器文件可能因重启丢失
+    // 优先上传到服务器获取URL（短字符串，同步快）；失败时降级用base64
     let imageValue = existingImage;
     const fileInput = document.getElementById('frmImage');
     const base64data = document.getElementById('frmImageData').value;
     if (base64data && base64data !== existingImage) {
-        // 用户选了新图片，使用base64数据URL（持久化在数据中）
-        imageValue = base64data;
-        // 后台尝试上传到服务器（仅作加速引用，不影响数据完整性）
+        // 上传到服务器获取URL（短字符串同步快）；失败降级base64
         if (_apiToken && fileInput && fileInput.files && fileInput.files[0]) {
-            _apiUploadProductImage(fileInput.files[0]).then(function(url) {
-                // 上传成功后更新imageUrl字段用于服务器引用
-            }).catch(function() {});
+            try {
+                imageValue = await _apiUploadProductImage(fileInput.files[0]);
+            } catch(e) {
+                console.warn('图片上传失败，使用base64降级:', e.message);
+                imageValue = base64data;
+            }
+        } else {
+            imageValue = base64data;
         }
     } else if (!fileInput || !fileInput.files || !fileInput.files[0]) {
         // 没有选新文件，保持现有图片
