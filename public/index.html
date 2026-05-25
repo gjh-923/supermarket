@@ -457,27 +457,50 @@ async function _apiSyncAll() {
                 // 数值类表格（products, salesOrders等）：服务器完全权威，保证多用户数据一致
                 var numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords', 'inventoryCheckTasks', 'inventoryAlertSettings'];
                 if (numericTables.indexOf(camelKey) !== -1) {
-                    // 服务器数据为基准，客户端补充新记录
-                    var serverMap = new Map(data.map(function(d){return [d.id, d];}));
-                    for (var _i = 0; _i < data.length; _i++) {
-                        var d = data[_i];
-                        var local = localMap.get(d.id);
-                        if (local) {
-                            // 保留本地非空的字符串字段（如图片URL），数值字段以服务器为准
-                            for (var _k of Object.keys(local)) {
-                                if (typeof local[_k] === 'string' && local[_k] !== '' && (d[_k] == null || d[_k] === '')) {
-                                    d[_k] = local[_k];
+                    // dirty key（本地有未推送的变更）：使用客户端权威合并，保护本地新数据不被服务端旧数据覆盖
+                    if (_dirtyKeys[camelKey]) {
+                        console.warn('[sync] ' + camelKey + ' has pending push, using client-authoritative merge');
+                        var clientMap = new Map(latestParsed.map(function(d){return [d.id, d];}));
+                        for (var _di = 0; _di < data.length; _di++) {
+                            var sd = data[_di];
+                            var cl = clientMap.get(sd.id);
+                            if (cl) {
+                                // 服务端字段补空（不会覆盖客户端已有的非空值）
+                                for (var _dk of Object.keys(sd)) {
+                                    var sv2 = sd[_dk];
+                                    var cv2 = cl[_dk];
+                                    if (sv2 != null && (cv2 == null || cv2 === '' || (Array.isArray(cv2) && cv2.length === 0))) {
+                                        cl[_dk] = sv2;
+                                    }
+                                }
+                            } else {
+                                clientMap.set(sd.id, sd);  // 服务端有、客户端没有的记录（其他用户新增的）
+                            }
+                        }
+                        merged = Array.from(clientMap.values());
+                    } else {
+                        // 服务器数据为基准，客户端补充新记录
+                        var serverMap = new Map(data.map(function(d){return [d.id, d];}));
+                        for (var _i = 0; _i < data.length; _i++) {
+                            var d = data[_i];
+                            var local = localMap.get(d.id);
+                            if (local) {
+                                // 保留本地非空的字符串字段（如图片URL），数值字段以服务器为准
+                                for (var _k of Object.keys(local)) {
+                                    if (typeof local[_k] === 'string' && local[_k] !== '' && (d[_k] == null || d[_k] === '')) {
+                                        d[_k] = local[_k];
+                                    }
                                 }
                             }
                         }
-                    }
-                    // 保留本地独有记录（新增但尚未同步到服务器的），防止数据丢失
-                    for (var _j2 = 0; _j2 < latestParsed.length; _j2++) {
-                        if (!serverMap.has(latestParsed[_j2].id)) {
-                            data.push(latestParsed[_j2]);
+                        // 保留本地独有记录（新增但尚未同步到服务器的），防止数据丢失
+                        for (var _j2 = 0; _j2 < latestParsed.length; _j2++) {
+                            if (!serverMap.has(latestParsed[_j2].id)) {
+                                data.push(latestParsed[_j2]);
+                            }
                         }
+                        merged = data;
                     }
-                    merged = data;
                 } else {
                     // 其他表格：服务器数据为权威存在性，字段智能合并
                     var serverMap = new Map(data.map(function(d){return [d.id, d];}));
@@ -528,7 +551,7 @@ async function _apiSyncAll() {
             var checkTasks = loadData('inventoryCheckTasks');
             if (checkTasks && checkTasks.length > 0) {
                 var latest = checkTasks.slice(0, 3);
-                console.log('[sync] inventoryCheckTasks top3:', latest.map(function(t){return t.taskNo+':'+t.status+(t.completeTime?'('+t.completeTime+')':'');}).join(', '));
+                console.warn('[sync] inventoryCheckTasks top3:', latest.map(function(t){return t.taskNo+':'+t.status+(t.completeTime?'('+t.completeTime+')':'');}).join(', '));
             }
         } catch(e) {}
         console.log('数据同步完成');
@@ -1122,18 +1145,25 @@ function loadData(key) {
     return _normalizeData(key, raw);
 }
 var _syncDebounceTimer = null;
+var _dirtyKeys = {};  // 追踪有未完成push的key，防止auto-sync用旧服务端数据覆盖本地新数据
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
     if (_apiToken && !(Array.isArray(data) && data.length === 0)) {
+        _dirtyKeys[key] = true;  // 标记：本地有未推送的新数据
         fetch(API_BASE + '/api/sync/' + key, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
             body: JSON.stringify({ data: Array.isArray(data) ? data : Object.values(data) })
         }).then(function(res) { return res.json(); }).then(function(json) {
-            if (json.code !== 0) console.warn('[saveData] push failed for ' + key + ':', json.msg || json.message);
+            if (json.code !== 0) {
+                console.warn('[saveData] push failed for ' + key + ':', json.msg || json.message);
+                showToast('数据同步失败: ' + (json.msg || json.message || '未知错误'));
+            }
         }).catch(function(e) {
             console.warn('[saveData] push network error for ' + key + ':', e.message);
+            showToast('网络同步失败，请检查网络连接');
         }).finally(function() {
+            delete _dirtyKeys[key];  // 清除脏标记
             // 等 push 完成后再拉回，避免拉到服务端旧数据覆盖本地新数据
             if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
             _syncDebounceTimer = setTimeout(async function() {
@@ -5196,9 +5226,9 @@ function executeCheck(t) {
         html += `<tr>
             <td>${p.name}</td>
             <td>${p.stock}</td>
-            <td><input type="number" id="chk_${p.id}" value="${p.stock}" style="width:80px;padding:4px;border-radius:8px;border:1px solid #dde6d4;" data-book="${p.stock}"></td>
+            <td><input type="number" id="chk_${p.id}" name="chk_${p.id}" value="${p.stock}" style="width:80px;padding:4px;border-radius:8px;border:1px solid #dde6d4;" data-book="${p.stock}"></td>
             <td><span id="diff_${p.id}" style="font-weight:600;">0</span></td>
-            <td><input id="note_${p.id}" placeholder="差异说明" style="width:100px;padding:4px;border-radius:8px;border:1px solid #dde6d4;"></td>
+            <td><input id="note_${p.id}" name="note_${p.id}" placeholder="差异说明" style="width:100px;padding:4px;border-radius:8px;border:1px solid #dde6d4;"></td>
         </tr>`;
     });
     html += `</tbody></table>
@@ -5218,9 +5248,11 @@ function executeCheck(t) {
         `<button class="btn btn-outline" onclick="closeModal()">暂存</button><button class="btn btn-primary" onclick="submitCheckResult('${t.id}')">提交盘点结果</button>`);
 }
 function submitCheckResult(taskId) {
+    console.warn('[check] submitCheckResult called, taskId:', taskId);
     if (!canEditWarehouse()) { showToast('只读权限，无法提交盘点结果'); return; }
     const tasks = loadData('inventoryCheckTasks');
     const task = tasks.find(x=>x.id===taskId);
+    console.warn('[check] task found:', task ? task.taskNo+':'+task.status : 'NOT FOUND');
     if(!task) return;
     const products = loadData('products');
     const items = [];
@@ -5236,6 +5268,7 @@ function submitCheckResult(taskId) {
     task.items = items;
     task.status = '已完成';
     task.completeTime = new Date().toLocaleString();
+    console.warn('[check] saving task with status:', task.status, 'items:', items.length);
     saveData('inventoryCheckTasks', tasks);
 
     const discrepancies = items.filter(i=>i.diff!==0);
