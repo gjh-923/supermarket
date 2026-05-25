@@ -1121,14 +1121,15 @@ function saveData(key, data) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
             body: JSON.stringify({ data: Array.isArray(data) ? data : Object.values(data) })
-        }).catch(() => {});
-        // 修改后立即拉取一次同步，让其他用户看到更新
-        if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
-        _syncDebounceTimer = setTimeout(async () => {
-            _syncDebounceTimer = null;
-            await _apiSyncAll();
-            _refreshCurrentView();
-        }, 500);
+        }).catch(function(){}).finally(function() {
+            // 等 push 完成后再拉回，避免拉到服务端旧数据覆盖本地新数据
+            if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+            _syncDebounceTimer = setTimeout(async function() {
+                _syncDebounceTimer = null;
+                await _apiSyncAll();
+                _refreshCurrentView();
+            }, 500);
+        });
     }
 }
 function initAllData() {
