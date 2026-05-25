@@ -6717,6 +6717,8 @@ function saveBatchAttendance() {
         records.push(rec);
     });
     saveData('attendances', attendances);
+    // 自动同步工资数据
+    syncSalaryFromAttendance(date.slice(0, 7));
     closeModal();
     navigateTo('employee_attendance');
     addLog(`批量考勤: ${date}`);
@@ -6844,38 +6846,52 @@ function renderSalaryContent() {
 function init_employee_salary() {
     refreshCurrentTable = () => { try { renderSalaryContent(); } catch(e) {} };
 }
-function autoCalcSalary() {
+function syncSalaryFromAttendance(month) {
     const employees = loadData('employees');
     let salaries = loadData('salaries');
-    let attendances = loadData('attendances');
-    const thisMonth = new Date().toISOString().slice(0,7);
-    // Use stable IDs based on employee_id + month to prevent duplicates across recalculations
-    const existingIds = new Set(salaries.map(s => String(s.id)));
-    employees.forEach(emp=>{
-        const stableId = parseInt(String(emp.id) + thisMonth.replace(/\D/g,''));
-        // Skip if already exists for this employee+month (idempotent)
-        if (salaries.some(s=>String(s.employee_id)===String(emp.id)&&s.salary_month===thisMonth)) return;
-        // Remove old entry with different ID for same employee+month
-        salaries = salaries.filter(s=>!(String(s.employee_id)===String(emp.id)&&s.salary_month===thisMonth));
-        const monthAtt = attendances.filter(a=>String(a.employee_id)===String(emp.id)&&(a.att_date||'').startsWith(thisMonth));
-        const workDays = monthAtt.filter(a=>a.status==='正常').length;
-        const lateDays = monthAtt.filter(a=>a.status==='迟到').length;
-        const earlyDays = monthAtt.filter(a=>a.status==='早退').length;
-        const absentDays = monthAtt.filter(a=>a.status==='旷工').length;
-        const overtimeDays = monthAtt.filter(a=>a.status==='加班').length;
+    const attendances = loadData('attendances');
+    employees.forEach(emp => {
+        const monthAtt = attendances.filter(a => String(a.employee_id) === String(emp.id) && (a.att_date || '').startsWith(month));
+        if (monthAtt.length === 0) return;
+        const workDays = monthAtt.filter(a => a.status === '正常').length;
+        const lateDays = monthAtt.filter(a => a.status === '迟到').length;
+        const earlyDays = monthAtt.filter(a => a.status === '早退').length;
+        const absentDays = monthAtt.filter(a => a.status === '旷工').length;
+        const overtimeDays = monthAtt.filter(a => a.status === '加班').length;
+        const leaveDays = monthAtt.filter(a => a.status === '请假').length;
         const baseSalary = 5000;
         const overtimePay = overtimeDays * 200;
         const deduction = lateDays * 50 + earlyDays * 50 + absentDays * 300;
-        const total = Math.max(0, baseSalary + overtimePay - deduction);
-        salaries.push({
-            id: stableId, employee_id: emp.id, employee_name: emp.name,
-            salary_month: thisMonth, base_salary: baseSalary, overtime_pay: overtimePay,
-            bonus: 0, deduction, work_days: workDays, overtime_days: overtimeDays,
-            late_days: lateDays, early_days: earlyDays, absent_days: absentDays,
-            total, created_at: new Date().toISOString()
-        });
+        const existing = salaries.find(s => String(s.employee_id) === String(emp.id) && s.salary_month === month);
+        if (existing) {
+            // 更新考勤相关字段，保留手动设置的奖金等
+            existing.work_days = workDays;
+            existing.late_days = lateDays;
+            existing.early_days = earlyDays;
+            existing.absent_days = absentDays;
+            existing.overtime_days = overtimeDays;
+            existing.leave_days = leaveDays;
+            existing.overtime_pay = overtimePay;
+            existing.deduction = deduction;
+            existing.base_salary = baseSalary;
+            existing.total = Math.max(0, baseSalary + overtimePay + (existing.bonus || 0) - deduction);
+        } else {
+            salaries = salaries.filter(s => !(String(s.employee_id) === String(emp.id) && s.salary_month === month));
+            const stableId = parseInt(String(emp.id) + month.replace(/\D/g, ''));
+            salaries.push({
+                id: stableId, employee_id: emp.id, employee_name: emp.name,
+                salary_month: month, base_salary: baseSalary, overtime_pay: overtimePay,
+                bonus: 0, deduction, work_days: workDays, overtime_days: overtimeDays,
+                late_days: lateDays, early_days: earlyDays, absent_days: absentDays,
+                leave_days: leaveDays, total, created_at: new Date().toISOString()
+            });
+        }
     });
     saveData('salaries', salaries);
+}
+function autoCalcSalary() {
+    const thisMonth = new Date().toISOString().slice(0,7);
+    syncSalaryFromAttendance(thisMonth);
     renderSalaryContent();
     addLog(`自动计算工资: ${thisMonth}`);
     showToast(`${thisMonth} 工资已自动计算完成`);
