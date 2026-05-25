@@ -2110,6 +2110,8 @@ function seedDefaultData() {
     for (const m of maintenances) maintStmt.run(m.version, m.type, m.content, m.operator, m.planDate, m.executeDate, m.duration, m.status, m.result, m.rollback);
 
     console.log('Default data seeded successfully!');
+    syncAffectedTablesToDataStore();
+    console.log('Data synced to data_store for multi-user access.');
   }
 }
 
