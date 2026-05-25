@@ -7059,12 +7059,13 @@ function syncSalaryFromAttendance(month) {
         } else {
             salaries = salaries.filter(s => !(String(s.employee_id) === String(emp.id) && s.salary_month === month));
             const stableId = parseInt(String(emp.id) + month.replace(/\D/g, ''));
+            const total = Math.max(0, baseSalary + overtimePay - deduction);
             salaries.push({
                 id: stableId, employee_id: emp.id, employee_name: emp.name,
                 salary_month: month, base_salary: baseSalary, overtime_pay: overtimePay,
                 bonus: 0, deduction, work_days: workDays, overtime_days: overtimeDays,
                 late_days: lateDays, early_days: earlyDays, absent_days: absentDays,
-                leave_days: leaveDays, total, created_at: new Date().toISOString()
+                leave_days: leaveDays, total: total, created_at: new Date().toISOString()
             });
         }
     });

@@ -265,6 +265,29 @@ function _syncToSqlTable(storeKey, rows) {
     replaceAll(rows);
   }
 
+  // salaries: INSERT OR REPLACE
+  if (storeKey === 'salaries') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO salaries
+      (id, employee_id, employee_name, year, month, base_salary, overtime_pay, bonus, deduction, total, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const s of items) {
+        const salaryMonth = s.salary_month || '';
+        const parts = salaryMonth.split('-');
+        const year = parseInt(parts[0]) || 0;
+        const month = parseInt(parts[1]) || 0;
+        stmt.run(
+          s.id, s.employee_id || s.employeeId || '', s.employee_name || s.employeeName || '',
+          year, month,
+          s.base_salary || s.baseSalary || 0, s.overtime_pay || s.overtimePay || 0,
+          s.bonus || 0, s.deduction || 0, s.total || 0,
+          s.status || '待发放', s.created_at || ''
+        );
+      }
+    });
+    insertMany(rows);
+  }
+
   // === exchangeRewards ===
   if (storeKey === 'exchangeRewards') {
     const stmt = db.prepare(`INSERT OR REPLACE INTO exchange_rewards (id, name, points, type, enabled)
@@ -679,7 +702,7 @@ function syncAffectedTablesToDataStore() {
   upsert.run('salaries', JSON.stringify(salaries.map(s => ({
     id: s.id, employee_id: s.employee_id, employee_name: s.employee_name,
     year: s.year, month: s.month, salary_month: `${s.year}-${String(s.month).padStart(2,'0')}`,
-    baseSalary: s.base_salary, overtimePay: s.overtime_pay,
+    base_salary: s.base_salary, overtime_pay: s.overtime_pay,
     bonus: s.bonus, deduction: s.deduction, total: s.total,
     status: s.status, created_at: s.created_at
   }))));
