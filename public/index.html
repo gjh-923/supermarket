@@ -1069,12 +1069,12 @@ function recalcAllMemberStats() {
     var records = loadData('memberPointsRecords');
     var changed = false;
     members.forEach(function(m) {
-        // 从订单计算累计消费和最后消费日期
+        // 从订单计算累计消费（只增不减，防止本地订单不全时覆盖正确的服务端数据）
         var memberOrders = orders.filter(function(o) {
-            return o.memberId === m.id && o.status !== '退货';
+            return String(o.memberId) === String(m.id) && o.status !== '退货';
         });
         var totalSpent = memberOrders.reduce(function(s, o) { return s + (Number(o.totalAmount) || 0); }, 0);
-        if (Math.abs((m.totalSpent || 0) - totalSpent) > 0.01) {
+        if (totalSpent > (m.totalSpent || 0)) {
             m.totalSpent = totalSpent;
             changed = true;
         }
@@ -1088,18 +1088,15 @@ function recalcAllMemberStats() {
                 m.lastConsumeDate = lastDate;
                 changed = true;
             }
-        } else if (m.lastConsumeDate) {
-            m.lastConsumeDate = '';
-            changed = true;
         }
         // 累计积分 = 消费获取(1:1) + 赠送 + 积分调整(正数)，永不减少
-        var memberRecords = records.filter(function(r) { return r.memberId === m.id; });
+        var memberRecords = records.filter(function(r) { return String(r.memberId) === String(m.id); });
         var calcCumPts = memberRecords.reduce(function(s, r) {
             return s + (r.points > 0 ? r.points : 0);
         }, 0);
-        // 确保累计积分 >= 累计消费（1元=1积分）
+        // 确保累计积分 >= 累计消费（1元=1积分），且永不减少
         if (calcCumPts < Math.floor(m.totalSpent || 0)) calcCumPts = Math.floor(m.totalSpent || 0);
-        if ((m.cumulativePoints || 0) !== calcCumPts) {
+        if (calcCumPts > (m.cumulativePoints || 0)) {
             m.cumulativePoints = calcCumPts;
             changed = true;
         }
