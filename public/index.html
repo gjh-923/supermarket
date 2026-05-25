@@ -3961,7 +3961,24 @@ function updateMemberStats() {
 function init_member() {
     autoMatchAllMemberLevels();
     refreshCurrentTable = () => {
-        let data = loadData('members');
+        // 渲染前强制重算全部会员等级（最后一次保障）
+        const allMembers = loadData('members');
+        const lvls = loadData('memberLevels');
+        let fixedCount = 0;
+        if (lvls.length) {
+            const sorted = [...lvls].sort((a,b)=>b.minSpent-a.minSpent);
+            allMembers.forEach(m => {
+                const spent = Number(m.totalSpent) || 0;
+                for (const lv of sorted) {
+                    if (spent >= (Number(lv.minSpent) || 0)) {
+                        if (m.level !== lv.name) { m.level = lv.name; fixedCount++; }
+                        break;
+                    }
+                }
+            });
+            if (fixedCount > 0) { saveData('members', allMembers); showToast(`已自动修正 ${fixedCount} 位会员的等级`); }
+        }
+        let data = allMembers;
         if (currentMemberStatusFilter !== '全部') {
             data = data.filter(m=>(m.status||'正常')===currentMemberStatusFilter);
         }
@@ -4420,14 +4437,19 @@ function deleteLevel(l) {
 function autoMatchMemberLevel(member) {
     if (!member) return;
     const levels = loadData('memberLevels');
-    if (!levels.length) return;
+    console.log('[autoMatchMemberLevel] member=' + member.name + ' id=' + member.id + ' totalSpent=' + member.totalSpent + ' currentLevel=' + member.level);
+    console.log('[autoMatchMemberLevel] levels=' + JSON.stringify(levels.map(l=>({name:l.name,minSpent:l.minSpent}))));
+    if (!levels.length) { console.log('[autoMatchMemberLevel] no levels, return'); return; }
     levels.sort((a,b)=>b.minSpent-a.minSpent);
-    const spent = member.totalSpent || 0;
+    const spent = Number(member.totalSpent) || 0;
     let matched = levels[levels.length-1];
     for (const lv of levels) {
-        if (spent >= (lv.minSpent || 0)) { matched = lv; break; }
+        if (spent >= (Number(lv.minSpent) || 0)) { matched = lv; console.log('[autoMatchMemberLevel] matched=' + lv.name + ' (spent=' + spent + ' >= minSpent=' + lv.minSpent + ')'); break; }
+        console.log('[autoMatchMemberLevel] skip ' + lv.name + ' (spent=' + spent + ' < minSpent=' + lv.minSpent + ')');
     }
+    console.log('[autoMatchMemberLevel] final: current=' + member.level + ' matched=' + matched.name);
     if (member.level !== matched.name) {
+        console.log('[autoMatchMemberLevel] UPDATING level to ' + matched.name);
         member.level = matched.name;
         return true;
     }
@@ -4435,9 +4457,11 @@ function autoMatchMemberLevel(member) {
 }
 function autoMatchAllMemberLevels() {
     const members = loadData('members');
+    console.log('[autoMatchAllMemberLevels] members count=' + members.length);
     let changed = false;
     members.forEach(m => { if (autoMatchMemberLevel(m)) changed = true; });
-    if (changed) saveData('members', members);
+    console.log('[autoMatchAllMemberLevels] changed=' + changed);
+    if (changed) { saveData('members', members); console.log('[autoMatchAllMemberLevels] saved'); }
 }
 
 // -- 积分管理 --
