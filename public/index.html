@@ -6660,17 +6660,23 @@ function changeAttMonth(delta) {
 function batchAttendance() {
     const employees = loadData('employees');
     const today = getToday();
-    const empChecks = employees.map(e=>`
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f4eb;">
+    const existingAtt = loadData('attendances').filter(a=>a.att_date===today);
+    const attMap = {};
+    existingAtt.forEach(a=>{ attMap[a.employee_id] = a; });
+    const empChecks = employees.map(e=>{
+        const cur = attMap[e.id] || {};
+        const sel = v=>(cur.status||'正常')===v?'selected':'';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f4eb;">
             <span>${e.name} <span style="font-size:0.68rem;color:#819e73;">${e.dept||''}</span></span>
             <div style="display:flex;gap:8px;">
                 <select id="attStatus_${e.id}" style="padding:3px 10px;border-radius:10px;border:1px solid #dde6d4;font-family:inherit;font-size:0.75rem;">
-                    <option value="正常">正常</option><option value="迟到">迟到</option><option value="早退">早退</option><option value="旷工">旷工</option><option value="加班">加班</option><option value="请假">请假</option>
+                    <option value="正常" ${sel('正常')}>正常</option><option value="迟到" ${sel('迟到')}>迟到</option><option value="早退" ${sel('早退')}>早退</option><option value="旷工" ${sel('旷工')}>旷工</option><option value="加班" ${sel('加班')}>加班</option><option value="请假" ${sel('请假')}>请假</option>
                 </select>
-                <input type="time" id="attIn_${e.id}" value="09:00" style="width:70px;padding:3px 6px;border-radius:10px;border:1px solid #dde6d4;font-size:0.72rem;font-family:inherit;">
-                <input type="time" id="attOut_${e.id}" value="18:00" style="width:70px;padding:3px 6px;border-radius:10px;border:1px solid #dde6d4;font-size:0.72rem;font-family:inherit;">
+                <input type="time" id="attIn_${e.id}" value="${cur.check_in||'09:00'}" style="width:70px;padding:3px 6px;border-radius:10px;border:1px solid #dde6d4;font-size:0.72rem;font-family:inherit;">
+                <input type="time" id="attOut_${e.id}" value="${cur.check_out||'18:00'}" style="width:70px;padding:3px 6px;border-radius:10px;border:1px solid #dde6d4;font-size:0.72rem;font-family:inherit;">
             </div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
     openModal('批量考勤登记', `
         <div class="form-row"><div class="form-field"><label>考勤日期</label><input type="date" id="batchAttDate" value="${today}"></div>
         <div class="form-field" style="align-self:flex-end;"><button class="btn btn-outline" style="font-size:0.7rem;" onclick="fillAllAtt('正常')">全部正常</button></div></div>
