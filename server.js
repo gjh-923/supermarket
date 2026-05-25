@@ -1673,22 +1673,43 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
             && typeof rows[0] === 'object' && rows[0] !== null && 'id' in rows[0]
             && typeof existingRows[0] === 'object' && existingRows[0] !== null && 'id' in existingRows[0]) {
           const mergedMap = new Map(rows.map(r => [r.id, r]));
-          for (const row of existingRows) {
-            if (!mergedMap.has(row.id)) {
-              mergedMap.set(row.id, row); // retain server-only records from other clients
-            } else {
-              // Field-level merge: server fills missing/empty fields in client record
-              const cr = mergedMap.get(row.id);
-              for (const key of Object.keys(row)) {
-                const sv = row[key];
-                const cv = cr[key];
-                if (sv != null && (cv == null || cv === '' || (Array.isArray(cv) && cv.length === 0))) {
-                  cr[key] = sv;
+          // 数值类表格：服务器权威，客户端字段补空（保证多用户数据一致）
+          const numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords'];
+          if (numericTables.indexOf(storeKey) !== -1) {
+            // 服务器数据为基准，客户端补充新记录
+            const serverMap = new Map(existingRows.map(r => [r.id, r]));
+            for (const row of rows) {
+              if (!serverMap.has(row.id)) {
+                serverMap.set(row.id, row); // 客户端新增的记录
+              } else {
+                // 保留客户端非空字符串字段
+                const sv = serverMap.get(row.id);
+                for (const key of Object.keys(row)) {
+                  if (typeof row[key] === 'string' && row[key] !== '' && (sv[key] == null || sv[key] === '')) {
+                    sv[key] = row[key];
+                  }
                 }
               }
             }
+            merged = Array.from(serverMap.values());
+          } else {
+            for (const row of existingRows) {
+              if (!mergedMap.has(row.id)) {
+                mergedMap.set(row.id, row); // retain server-only records from other clients
+              } else {
+                // Field-level merge: server fills missing/empty fields in client record
+                const cr = mergedMap.get(row.id);
+                for (const key of Object.keys(row)) {
+                  const sv = row[key];
+                  const cv = cr[key];
+                  if (sv != null && (cv == null || cv === '' || (Array.isArray(cv) && cv.length === 0))) {
+                    cr[key] = sv;
+                  }
+                }
+              }
+            }
+            merged = Array.from(mergedMap.values());
           }
-          merged = Array.from(mergedMap.values());
           merged.sort((a, b) => (b.id || 0) - (a.id || 0));
         }
       } catch(e) { /* merge failed, use client data as-is */ }

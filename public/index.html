@@ -450,28 +450,44 @@ async function _apiSyncAll() {
                 const latest = localStorage.getItem('sms_' + camelKey);
                 let latestParsed = parsed;
                 try { if (latest) latestParsed = JSON.parse(latest); } catch(e) {}
-                // 服务器数据为权威：存在性以服务器为准，字段值智能合并
-                const serverMap = new Map(data.map(d => [d.id, d]));
-                const merged = [];
-                // 处理本地已有的记录
-                for (const local of latestParsed) {
-                    const sv = serverMap.get(local.id);
-                    if (sv) {
-                        // 服务器有：字段智能合并（本地非空保留，空字段从服务器补）
-                        for (const key of Object.keys(sv)) {
-                            const lv = local[key];
-                            if (sv[key] != null && (lv == null || lv === '' || (Array.isArray(lv) && lv.length === 0))) {
-                                local[key] = sv[key];
+                var localMap = new Map(latestParsed.map(function(d){return [d.id, d];}));
+                var merged;
+                // 数值类表格（products, salesOrders等）：服务器完全权威，保证多用户数据一致
+                var numericTables = ['products', 'salesOrders', 'purchaseOrders', 'inventoryRecords'];
+                if (numericTables.indexOf(camelKey) !== -1) {
+                    // 服务器数据直接覆盖本地，多用户数据完全统一
+                    for (var _i = 0; _i < data.length; _i++) {
+                        var d = data[_i];
+                        var local = localMap.get(d.id);
+                        if (local) {
+                            // 保留本地非空的字符串字段（如图片URL），数值字段以服务器为准
+                            for (var _k of Object.keys(local)) {
+                                if (typeof local[_k] === 'string' && local[_k] !== '' && (d[_k] == null || d[_k] === '')) {
+                                    d[_k] = local[_k];
+                                }
                             }
                         }
-                        merged.push(local);
-                        serverMap.delete(local.id);
                     }
-                    // 本地有但服务器没有 → 已被其他用户删除，丢弃
-                }
-                // 服务器独有的新记录（其他用户添加的）
-                for (const [id, sv] of serverMap) {
-                    merged.push(sv);
+                    merged = data;
+                } else {
+                    // 其他表格：服务器数据为权威存在性，字段智能合并
+                    var serverMap = new Map(data.map(function(d){return [d.id, d];}));
+                    merged = [];
+                    for (var _j = 0; _j < latestParsed.length; _j++) {
+                        var local = latestParsed[_j];
+                        var sv = serverMap.get(local.id);
+                        if (sv) {
+                            for (var _k2 of Object.keys(sv)) {
+                                var lv = local[_k2];
+                                if (sv[_k2] != null && (lv == null || lv === '' || (Array.isArray(lv) && lv.length === 0))) {
+                                    local[_k2] = sv[_k2];
+                                }
+                            }
+                            merged.push(local);
+                            serverMap.delete(local.id);
+                        }
+                    }
+                    for (var _key of serverMap.keys()) { merged.push(serverMap.get(_key)); }
                 }
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
                 const normalized = _normalizeData(camelKey, merged);
