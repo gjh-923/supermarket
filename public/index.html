@@ -5170,7 +5170,7 @@ pageRenderers['inventory_check'] = function() {
     return renderTablePage('库存盘点', '仓库管理 / 盘点管理',
         ['盘点单号','盘点日期','盘点范围','状态','盘点人','备注'],
         tasks,
-        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck}]:[])],
+        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck},{label:'删除',action:deleteCheckTask}]:[])],
         createBtn + `<button class="btn btn-outline" ${btnLink('inventory')}>📋 库存管理</button><button class="btn btn-outline" ${btnLink('warehouse')}>🏭 仓库概览</button><button class="btn btn-outline" ${btnLink('inventory_check')}>刷新</button>`,
         '搜索盘点单号'
     );
@@ -5183,7 +5183,7 @@ function init_inventory_check() {
             if(t.status==='已完成') return '<span class="badge badge-on">已完成</span>';
             return '<span class="badge badge-off">'+t.status+'</span>';
         }},{key:'checker'},{key:'note'}],
-        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck}]:[])],
+        [{label:'详情',action:viewCheckTask},...(canEditWarehouse()?[{label:'执行',action:executeCheck},{label:'删除',action:deleteCheckTask}]:[])],
         (item,term)=>item.taskNo.includes(term)||item.note.includes(term)
     );
     refreshCurrentTable();
@@ -5310,6 +5310,23 @@ function viewCheckTask(t) {
         </tbody></table>`;
     }
     openModal('盘点详情 - '+t.taskNo, html, `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
+}
+function deleteCheckTask(t) {
+    if (!canEditWarehouse()) { showToast('只读权限，无法删除盘点任务'); return; }
+    openModal('确认删除', `<p>确定要删除盘点任务 <strong>${t.taskNo}</strong> 吗？</p><p style="color:#c23d2e;">此操作不可恢复。</p>`,
+        `<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" style="background:#c23d2e;color:#fff;" onclick="confirmDeleteCheckTask('${t.id}')">确认删除</button>`);
+}
+function confirmDeleteCheckTask(taskId) {
+    const tasks = loadData('inventoryCheckTasks');
+    const idx = tasks.findIndex(x => x.id === taskId);
+    if (idx === -1) { closeModal(); return; }
+    const taskNo = tasks[idx].taskNo;
+    tasks.splice(idx, 1);
+    saveData('inventoryCheckTasks', tasks);
+    closeModal();
+    refreshCurrentTable();
+    addLog(`删除盘点任务: ${taskNo}`);
+    showToast('盘点任务已删除: ' + taskNo);
 }
 
 // -- 库存预警 --
