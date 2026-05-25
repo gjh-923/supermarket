@@ -442,11 +442,22 @@ async function _apiSyncAll() {
             const existing = localStorage.getItem('sms_' + camelKey);
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
-            // 服务器返回空数组：只有本地也为空才跳过（否则是全部删除，需要清空本地）
+            // 服务器返回空数组：判断是"未同步的新数据"还是"远程已删除"
             if (Array.isArray(data) && data.length === 0) {
                 if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) continue;
-                // 服务器为空但本地有数据 → 全部被其他用户删除，清空本地
+                var modAge = _lastModTime[camelKey] ? (Date.now() - _lastModTime[camelKey]) : 999999;
+                if (modAge < 10000) {
+                    // 本地数据最近刚修改，可能是服务器还没收到 → 推送本地到服务器
+                    fetch(API_BASE + '/api/sync/' + camelKey, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
+                        body: JSON.stringify(Array.isArray(parsed) ? parsed : Object.values(parsed))
+                    }).catch(function(){});
+                    continue;
+                }
+                // 本地数据较旧 → 远程确实已全部删除，清空本地
                 localStorage.setItem('sms_' + camelKey, '[]');
+                _lastModTime[camelKey] = 0;
                 continue;
             }
             // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
@@ -1093,6 +1104,7 @@ const DEFAULT_DATA = {
 };
 
 // localStorage 读写
+var _lastModTime = {};
 function loadData(key) {
     const d = localStorage.getItem('sms_'+key);
     const raw = d ? JSON.parse(d) : JSON.parse(JSON.stringify(DEFAULT_DATA[key]));
@@ -1101,6 +1113,7 @@ function loadData(key) {
 var _syncDebounceTimer = null;
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
+    _lastModTime[key] = Date.now();
     if (_apiToken && !(Array.isArray(data) && data.length === 0)) {
         fetch(API_BASE + '/api/sync/' + key, {
             method: 'POST',
@@ -6499,7 +6512,7 @@ function openScheduleDay(dateStr) {
     openModal(`排班 - ${dateStr}`, `<p style="font-size:0.75rem;color:#819e73;margin-bottom:12px;">为 ${dateStr} 设置员工班次 <span style="font-size:0.65rem;">（显示当月累计班次）</span>${hasAnySchedule ? ` · 当日已排 <b>${daySchedules.length}</b> 人` : ' · 当日未排班'}</p>${empRows}`,
         `${hasAnySchedule ? `<button class="btn btn-outline" style="color:#c23d2e;border-color:#e8c4c4;" onclick="clearDaySchedule('${dateStr}')">🗑 清除当日所有排班</button>` : ''}<button class="btn btn-outline" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveDaySchedule('${dateStr}')">保存当日排班</button>`);
 }
-function saveDaySchedule(dateStr) {
+async function saveDaySchedule(dateStr) {
     const employees = loadData('employees');
     let schedules = loadData('schedules');
     schedules = schedules.filter(s=>s.date!==dateStr);
@@ -6520,9 +6533,9 @@ function saveDaySchedule(dateStr) {
     navigateTo('employee_schedule');
     addLog(`排班操作: ${dateStr}`);
     showToast(`${dateStr} 排班已保存`);
-    // API 同步
+    // API 同步（await 确保服务器接收到数据后再允许 sync 覆盖）
     if (_apiToken) {
-        _apiSaveScheduleBatch(dateStr, shifts).catch(e => console.warn('API排班保存失败:', e.message));
+        try { await _apiSaveScheduleBatch(dateStr, shifts); } catch(e) { console.warn('API排班保存失败:', e.message); }
     }
 }
 async function clearDaySchedule(dateStr) {
@@ -6684,7 +6697,7 @@ function exportSchedule() {
     addLog(`导出排班表: ${monthStr}`);
     showToast(`排班表已导出: ${monthStr}`);
 }
-function applyBatchSchedule() {
+async function applyBatchSchedule() {
     const fromDay = parseInt(document.getElementById('batchFromDay').value);
     const toDay = parseInt(document.getElementById('batchToDay').value);
     const shift = document.getElementById('batchShift').value;
@@ -6717,12 +6730,12 @@ function applyBatchSchedule() {
     navigateTo('employee_schedule');
     addLog(`批量排班: ${scheduleYear}-${scheduleMonth} ${fromDay}-${toDay}日 ${shift}`);
     showToast('批量排班已应用');
-    // API 同步（按日期分组发送）
+    // API 同步（按日期分组发送，await 确保服务器接收到数据）
     if (_apiToken && allShifts.length > 0) {
         const byDate = {};
         allShifts.forEach(s => { if (!byDate[s.date]) byDate[s.date] = []; byDate[s.date].push(s); });
         for (const [d, shifts] of Object.entries(byDate)) {
-            _apiSaveScheduleBatch(d, shifts).catch(e => console.warn('API批量排班失败:', d, e.message));
+            try { await _apiSaveScheduleBatch(d, shifts); } catch(e) { console.warn('API批量排班失败:', d, e.message); }
         }
     }
 }
@@ -7071,28 +7084,54 @@ function saveManualSalary() {
 }
 
 // -- 员工岗位管理 --
+var _posFilterCategory = '全部';
+function filterPosByCat(cat) { _posFilterCategory = cat; currentFilterTerm = ''; currentTablePage = 1; refreshCurrentTable(); }
 pageRenderers['employee_position'] = function() {
     const positions = loadData('employeePositions');
     const categories = ['管理部','行政财务部','收银客服部','采购仓储部','营运安保部','系统管理岗'];
+    // Category stats
     let statsHtml = categories.map(cat=>{
         const count = positions.filter(p=>p.category===cat).length;
         const totalEmp = positions.filter(p=>p.category===cat).reduce((s,p)=>s+(p.employeeNames||[]).length,0);
-        return `<div class="stat-card card-center"><div class="stat-icon">👥</div><div class="stat-num" style="font-size:1rem;">${cat}</div><div class="stat-label">${count}个岗位 / ${totalEmp}人</div></div>`;
+        return `<div class="stat-card card-center" onclick="filterPosByCat('${cat}')" style="cursor:pointer;"><div class="stat-icon">👥</div><div class="stat-num" style="font-size:1rem;">${cat}</div><div class="stat-label">${count}个岗位 / ${totalEmp}人</div></div>`;
     }).join('');
-    return renderTablePage('员工岗位管理', '员工管理 / 岗位管理',
-        ['岗位名称','岗位分类','岗位描述','关联员工','操作'],
-        positions,
-        [{label:'关联员工',action:bindEmployeeToPosition},{label:'查看',action:viewEmployeePosition},{label:'编辑',action:editEmployeePosition},{label:'删除',action:deleteEmployeePosition}],
-        `<button class="btn btn-primary" onclick="addEmployeePosition()">新增岗位</button>`,
-        '搜索岗位名称或分类'
-    );
+    // Category tabs
+    const allCount = positions.length;
+    let tabsHtml = `<button class="btn btn-outline" onclick="filterPosByCat('全部')" style="${_posFilterCategory==='全部'?'background:#2a7a3b;color:#fff;':''}margin-right:4px;">全部 (${allCount})</button>`;
+    categories.forEach(cat=>{
+        const cnt = positions.filter(p=>p.category===cat).length;
+        tabsHtml += `<button class="btn btn-outline" onclick="filterPosByCat('${cat}')" style="${_posFilterCategory===cat?'background:#2a7a3b;color:#fff;':''}margin-right:4px;">${cat} (${cnt})</button>`;
+    });
+    return `<div class="page active">
+        <div class="page-header"><div><h1>员工岗位管理</h1><div class="breadcrumb">员工管理 / 岗位管理</div></div><div style="color:#819e73;font-size:0.8rem;">共 ${allCount} 个岗位</div></div>
+        <div class="page-body">
+            <div class="stats-row" style="margin-bottom:12px;">${statsHtml}</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">${tabsHtml}</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <input placeholder="搜索岗位名称" oninput="filterTable(this.value)" style="padding:6px 12px;border:1px solid #dde6d4;border-radius:16px;font-size:0.78rem;width:180px;">
+                    <button class="btn btn-primary" onclick="addEmployeePosition()">新增岗位</button>
+                </div>
+            </div>
+            <div id="tableArea">
+                <table class="data-table" style="min-width:100%;">
+                    <thead><tr><th>岗位名称</th><th>岗位分类</th><th>岗位描述</th><th>关联员工</th><th>操作</th></tr></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+                <div class="pagination" id="paginationArea"></div>
+            </div>
+        </div>
+    </div>`;
 };
 function init_employee_position() {
-    const positions = loadData('employeePositions');
-    refreshCurrentTable = () => renderTableData(positions,
-        [{key:'name'},{key:'category',render:p=>`<span class="badge badge-warn">${p.category}</span>`},{key:'description',render:p=>`<span style="font-size:0.7rem;">${(p.description||'').slice(0,30)}...</span>`},{key:'employeeNames',render:p=>(p.employeeNames||[]).length>0?(p.employeeNames||[]).join('、'):'<span style="color:#819e73;">暂未关联</span>'}],
+    refreshCurrentTable = () => renderTableData(loadData('employeePositions'),
+        [{key:'name'},{key:'category',render:p=>`<span class="badge badge-warn">${p.category}</span>`},{key:'description',render:p=>`<span style="font-size:0.7rem;">${(p.description||'').slice(0,30)}${(p.description||'').length>30?'...':''}</span>`},{key:'employeeNames',render:p=>(p.employeeNames||[]).length>0?(p.employeeNames||[]).join('、'):'<span style="color:#819e73;">暂未关联</span>'}],
         [{label:'关联员工',action:bindEmployeeToPosition},{label:'查看',action:viewEmployeePosition},{label:'编辑',action:editEmployeePosition},{label:'删除',action:deleteEmployeePosition}],
-        (item,term)=>item.name.includes(term)||item.category.includes(term)||(item.description||'').includes(term)
+        function(item,term){
+            if (_posFilterCategory !== '全部' && item.category !== _posFilterCategory) return false;
+            if (term) return item.name.includes(term) || item.category.includes(term) || (item.description||'').includes(term);
+            return true;
+        }
     );
     refreshCurrentTable();
 }
