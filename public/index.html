@@ -5283,6 +5283,23 @@ function submitCheckResult(taskId) {
     refreshCurrentTable();
     addLog(`完成盘点: ${task.taskNo}, 差异项: ${discrepancies.length}`);
     showToast(`盘点完成！差异项: ${discrepancies.length} 个，库存已更新`);
+    // 2秒后验证服务器端状态
+    var _taskId = taskId;
+    var _taskNo = task.taskNo;
+    setTimeout(async function() {
+        try {
+            var serverData = await _apiGet('/api/export/all?_=' + Date.now(), 30000);
+            var serverTasks = serverData.inventoryCheckTasks || [];
+            var serverTask = serverTasks.find(function(x) { return x.id === _taskId; });
+            if (serverTask) {
+                showToast('【验证】服务器端 ' + _taskNo + ' 状态: ' + serverTask.status);
+            } else {
+                showToast('【验证失败】服务器端未找到 ' + _taskNo + '，数据未推送成功！');
+            }
+        } catch(e) {
+            showToast('【验证失败】查询服务器状态出错: ' + e.message);
+        }
+    }, 2500);
 }
 function viewCheckTask(t) {
     let html = `<div style="font-size:0.85rem;"><p><strong>盘点单号:</strong> ${t.taskNo}</p><p><strong>日期:</strong> ${t.checkDate}</p><p><strong>范围:</strong> ${t.scope}</p><p><strong>状态:</strong> ${t.status}</p><p><strong>盘点人:</strong> ${t.checker}</p><p><strong>备注:</strong> ${t.note||'无'}</p></div>`;
