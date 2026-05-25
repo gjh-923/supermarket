@@ -438,24 +438,15 @@ async function _apiSyncAll() {
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
             if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0 && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
-                const localMap = new Map(parsed.map(d => [d.id, d]));
+                // 重新读localStorage，以最新状态为基础（同步期间可能有增/删操作）
+                const latest = localStorage.getItem('sms_' + camelKey);
+                let latestParsed = parsed;
+                try { if (latest) latestParsed = JSON.parse(latest); } catch(e) {}
+                const localMap = new Map(latestParsed.map(d => [d.id, d]));
+                // 服务器数据覆盖同ID记录，补充服务器独有的
                 for (const d of data) {
-                    localMap.set(d.id, d);  // 服务器数据覆盖同ID记录，新增服务器独有的
+                    localMap.set(d.id, d);
                 }
-                // 防竞态：重新读localStorage，捕获同步期间saveData新增的记录
-                try {
-                    const latest = localStorage.getItem('sms_' + camelKey);
-                    if (latest) {
-                        const latestParsed = JSON.parse(latest);
-                        if (Array.isArray(latestParsed)) {
-                            for (const d of latestParsed) {
-                                if (d && typeof d === 'object' && 'id' in d && !localMap.has(d.id)) {
-                                    localMap.set(d.id, d);
-                                }
-                            }
-                        }
-                    }
-                } catch(e) {}
                 const merged = Array.from(localMap.values());
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
                 const normalized = _normalizeData(camelKey, merged);
