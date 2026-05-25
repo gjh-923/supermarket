@@ -443,9 +443,20 @@ async function _apiSyncAll() {
                 let latestParsed = parsed;
                 try { if (latest) latestParsed = JSON.parse(latest); } catch(e) {}
                 const localMap = new Map(latestParsed.map(d => [d.id, d]));
-                // 本地数据优先，服务器只补充本地没有的记录
+                // 智能合并：本地有值的字段保留，本地空/缺失的字段从服务器补充
                 for (const d of data) {
-                    if (!localMap.has(d.id)) localMap.set(d.id, d);
+                    if (!localMap.has(d.id)) {
+                        localMap.set(d.id, d);
+                    } else {
+                        const local = localMap.get(d.id);
+                        for (const key of Object.keys(d)) {
+                            const sv = d[key];
+                            const lv = local[key];
+                            if (sv != null && (lv == null || lv === '' || (Array.isArray(lv) && lv.length === 0))) {
+                                local[key] = sv;
+                            }
+                        }
+                    }
                 }
                 const merged = Array.from(localMap.values());
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
