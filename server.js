@@ -1378,20 +1378,30 @@ app.get('/api/sales-orders', (req, res) => {
 
 app.post('/api/sales/checkout', authMiddleware, (req, res) => {
   try {
-    const { cart, memberId, useCoupon, couponDiscount: reqCouponDiscount, couponCost: reqCouponCost, bundleDiscount: reqBundleDiscount, payMethod } = req.body;
+    const { cart, memberId, useCoupon, couponDiscount: reqCouponDiscount, couponCost: reqCouponCost, bundleDiscount: reqBundleDiscount, payMethod, promotions: reqPromotions } = req.body;
     if (!cart || !Array.isArray(cart) || cart.length === 0) return res.json(err('购物车为空'));
 
     // ===== 促销引擎（服务端） =====
     const promoNow = new Date();
     const allPromos = db.prepare('SELECT * FROM promotions').all();
+    // 优先使用客户端传来的促销数据（保证与客户端计算一致），SQL数据作为兜底
+    const promoSource = (Array.isArray(reqPromotions) && reqPromotions.length > 0) ? reqPromotions : allPromos;
     function getActivePromoForServer(productId) {
-      return allPromos.find(p => {
-        const s = new Date(p.start_date); const e = new Date(p.end_date);
+      return promoSource.find(p => {
+        const startDate = p.start_date || p.startDate;
+        const endDate = p.end_date || p.endDate;
+        const s = new Date(startDate); const e = new Date(endDate);
         if (isNaN(s) || isNaN(e)) return false;
         e.setHours(23, 59, 59, 999);
         if (promoNow < s || promoNow > e) return false;
         let pids = [];
-        try { pids = typeof p.product_ids === 'string' ? JSON.parse(p.product_ids) : []; } catch(ex) {}
+        if (typeof p.product_ids === 'string') {
+          try { pids = JSON.parse(p.product_ids); } catch(ex) {}
+        } else if (p.productIds) {
+          pids = Array.isArray(p.productIds) ? p.productIds : [p.productIds];
+        } else if (p.productId) {
+          pids = [String(p.productId)];
+        }
         return pids.length === 0 || pids.includes('all') || pids.map(String).includes(String(productId));
       });
     }
@@ -1400,11 +1410,16 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
       if (!promo) return { subtotal: product.retail_price * qty, promoType: null, promoDesc: '' };
       const basePrice = product.retail_price;
       let rule = {};
-      try { rule = typeof promo.rule_json === 'string' ? JSON.parse(promo.rule_json) : (promo.rule_json || {}); } catch(ex) {}
-      const discount = rule.discount != null ? rule.discount : 90;
-      const buyQty = rule.buyQty || 1;
-      const freeQty = rule.freeQty || 1;
-      const specialPrice = rule.specialPrice || 0;
+      // 兼容两种格式：SQL的rule_json (JSON字符串) 和客户端的扁平字段 (discount/buyQty)
+      if (typeof promo.rule_json === 'string') {
+        try { rule = JSON.parse(promo.rule_json); } catch(ex) {}
+      } else if (promo.ruleJson) {
+        rule = typeof promo.ruleJson === 'string' ? JSON.parse(promo.ruleJson) : promo.ruleJson;
+      }
+      const discount = rule.discount != null ? rule.discount : (promo.discount != null ? promo.discount : 90);
+      const buyQty = rule.buyQty || promo.buyQty || 1;
+      const freeQty = rule.freeQty || promo.freeQty || 1;
+      const specialPrice = rule.specialPrice || promo.specialPrice || 0;
       let subtotal = basePrice * qty;
       let desc = '';
       switch (promo.type) {

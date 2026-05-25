@@ -492,6 +492,13 @@ async function _apiSyncAll() {
                                     local[_k2] = sv[_k2];
                                 }
                             }
+                            // 会员的财务/积分/等级字段以服务端为准（服务端结算时更新）
+                            if (camelKey === 'members') {
+                                var finFields = ['totalSpent', 'points', 'cumulativePoints', 'level', 'lastConsumeDate'];
+                                for (var _f = 0; _f < finFields.length; _f++) {
+                                    if (sv[finFields[_f]] != null) local[finFields[_f]] = sv[finFields[_f]];
+                                }
+                            }
                             merged.push(local);
                             serverMap.delete(local.id);
                         } else {
@@ -704,8 +711,8 @@ function _normalizeData(key, data) {
     return data;
 }
 
-async function _apiCheckout(cart, memberId, useCoupon, couponDiscount, couponCost, bundleDiscount, payMethod) {
-    return await _apiPost('/api/sales/checkout', { cart, memberId, useCoupon, couponDiscount, couponCost, bundleDiscount, payMethod });
+async function _apiCheckout(cart, memberId, useCoupon, couponDiscount, couponCost, bundleDiscount, payMethod, promotions) {
+    return await _apiPost('/api/sales/checkout', { cart, memberId, useCoupon, couponDiscount, couponCost, bundleDiscount, payMethod, promotions });
 }
 
 async function _apiSaveProduct(product) {
@@ -3494,11 +3501,27 @@ function checkout() {
     }));
     _checkoutInProgress = true;
     _checkoutTimer = Date.now();
-    _apiCheckout(cartForApi, posMember?.id||null, useCoupon, actualCouponDiscount, couponCost, bundleDiscount, payMethod).then(async result => {
+    const activePromos = loadData('promotions');
+    _apiCheckout(cartForApi, posMember?.id||null, useCoupon, actualCouponDiscount, couponCost, bundleDiscount, payMethod, activePromos).then(async result => {
         console.log('API结算成功:', result.orderNo);
-        showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
+        const paidAmount = result.finalAmount || finalAmount;
+        showToast(`结算成功！金额: ¥${formatMoney(paidAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
         // Save order locally using server's orderNo so reports see it immediately
-        _localSaveOrder(result.orderNo, result.finalAmount || finalAmount, payMethod, total, discountRate, actualCouponDiscount, bundleDiscount);
+        _localSaveOrder(result.orderNo, paidAmount, payMethod, total, discountRate, actualCouponDiscount, bundleDiscount);
+        // Update local member stats immediately to match server
+        if (posMember) {
+            const members = loadData('members');
+            const m = members.find(x => x.id === posMember.id);
+            if (m) {
+                const spendBase = result.totalAmount || paidAmount; // 服务端用totalAmount(会员折前)累积
+                m.totalSpent = (m.totalSpent || 0) + spendBase;
+                m.points = (m.points || 0) + Math.floor(spendBase) - (couponCost || 0);
+                m.cumulativePoints = (m.cumulativePoints || 0) + Math.floor(spendBase);
+                if (m.points < 0) m.points = 0;
+                m.lastConsumeDate = getToday();
+                saveData('members', members);
+            }
+        }
         // Also sync full data from server for multi-user consistency
         try { await _apiSyncAll(); } catch(e) { console.warn('全量同步失败:', e.message); }
         // Deduplicate: remove local order if server already has the same orderNo
