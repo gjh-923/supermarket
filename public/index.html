@@ -6401,12 +6401,10 @@ async function clearAllSchedules() {
     const schedules = loadData('schedules');
     const monthSchedules = schedules.filter(s=>(s.date||'').startsWith(monthStr));
     if(!confirm(`⚠️ 确定清除 ${scheduleYear}年${scheduleMonth}月 全部排班记录吗？\n\n此操作将删除该月所有 ${monthSchedules.length} 条排班记录，不可恢复！`)) return;
-    // 先通过服务端API逐日删除（同时更新SQL和data_store）
+    // 先通过服务端API并行删除（同时更新SQL和data_store）
     if (_apiToken) {
         const dates = [...new Set(monthSchedules.map(s=>s.date))];
-        for (const d of dates) {
-            try { await _apiSaveScheduleBatch(d, []); } catch(e) { console.warn('服务端清除排班失败:', d, e.message); }
-        }
+        await Promise.all(dates.map(d => _apiSaveScheduleBatch(d, []).catch(e => console.warn('服务端清除排班失败:', d, e.message))));
     }
     const filtered = schedules.filter(s => !(s.date || '').startsWith(monthStr));
     saveData('schedules', filtered);
@@ -6561,7 +6559,7 @@ function applyBatchSchedule() {
         if (repeat==='weekday' && (dayOfWeek===0||dayOfWeek===6)) continue;
         if (repeat==='weekend' && dayOfWeek!==0 && dayOfWeek!==6) continue;
         const dateStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        schedules = schedules.filter(s=>s.date!==dateStr);
+        schedules = schedules.filter(s=>!(s.date===dateStr && checkedIds.has(String(s.employee_id))));
         employees.forEach(e=>{
             const rec = {
                 id: makeId(), employee_id: e.id, employee_name: e.name,
@@ -6576,13 +6574,12 @@ function applyBatchSchedule() {
     navigateTo('employee_schedule');
     addLog(`批量排班: ${scheduleYear}-${scheduleMonth} ${fromDay}-${toDay}日 ${shift}`);
     showToast('批量排班已应用');
-    // API 同步（分批发送）
+    // API 同步（按日期分组发送）
     if (_apiToken && allShifts.length > 0) {
-        const batchSize = 50;
-        for (let i = 0; i < allShifts.length; i += batchSize) {
-            const chunk = allShifts.slice(i, i + batchSize);
-            const dateStr = chunk[0].date;
-            _apiSaveScheduleBatch(dateStr, chunk).catch(e => console.warn('API批量排班失败:', e.message));
+        const byDate = {};
+        allShifts.forEach(s => { if (!byDate[s.date]) byDate[s.date] = []; byDate[s.date].push(s); });
+        for (const [d, shifts] of Object.entries(byDate)) {
+            _apiSaveScheduleBatch(d, shifts).catch(e => console.warn('API批量排班失败:', d, e.message));
         }
     }
 }

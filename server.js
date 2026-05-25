@@ -756,7 +756,7 @@ app.post('/api/schedules/batch', authMiddleware, (req, res) => {
   const stmt = db.prepare('INSERT INTO schedules (employee_id, employee_name, date, shift) VALUES (?, ?, ?, ?)');
   const insertMany = db.transaction((items) => {
     for (const s of items) {
-      stmt.run(s.employeeId, s.employeeName || '', dateStr, s.shift || '早班');
+      stmt.run(s.employeeId ?? s.employee_id, s.employeeName || s.employee_name || '', dateStr, s.shift || '早班');
     }
   });
   insertMany(shifts);
