@@ -1173,10 +1173,25 @@ app.get('/api/promotions', (req, res) => {
   let promos = db.prepare('SELECT * FROM promotions ORDER BY id DESC').all();
   const { page, pageSize } = req.query;
   promos = promos.map(p => {
-    try { p.product_ids = JSON.parse(p.product_ids || '[]'); } catch (e) { p.product_ids = []; }
-    try { p.categories = JSON.parse(p.categories || '[]'); } catch (e) { p.categories = []; }
-    try { p.rule_json = JSON.parse(p.rule_json || '{}'); } catch (e) { p.rule_json = {}; }
-    return p;
+    let pids = [];
+    try { pids = JSON.parse(p.product_ids || '[]'); } catch (e) { pids = []; }
+    let cats = [];
+    try { cats = JSON.parse(p.categories || '[]'); } catch (e) { cats = []; }
+    let rule = {};
+    try { rule = JSON.parse(p.rule_json || '{}'); } catch (e) { rule = {}; }
+    return {
+      id: p.id, name: p.name, type: p.type,
+      productId: Array.isArray(pids) && pids.length === 1 ? pids[0] : (pids.length > 0 ? pids[0] : 'all'),
+      productIds: pids,
+      categories: cats,
+      discount: rule.discount != null ? rule.discount : 90,
+      buyQty: rule.buyQty || 1,
+      freeQty: rule.freeQty || 1,
+      specialPrice: rule.specialPrice || 0,
+      ruleJson: rule,
+      startDate: p.start_date, endDate: p.end_date,
+      status: p.status, description: p.description
+    };
   });
   const result = paginate(promos, page, pageSize);
   res.json(ok(result));
