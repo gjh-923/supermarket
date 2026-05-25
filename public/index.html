@@ -443,9 +443,9 @@ async function _apiSyncAll() {
                 let latestParsed = parsed;
                 try { if (latest) latestParsed = JSON.parse(latest); } catch(e) {}
                 const localMap = new Map(latestParsed.map(d => [d.id, d]));
-                // 服务器数据覆盖同ID记录，补充服务器独有的
+                // 本地数据优先，服务器只补充本地没有的记录
                 for (const d of data) {
-                    localMap.set(d.id, d);
+                    if (!localMap.has(d.id)) localMap.set(d.id, d);
                 }
                 const merged = Array.from(localMap.values());
                 merged.sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -741,7 +741,7 @@ const ROLES = {
     member_admin: { name: '会员管理员', pages: ['dashboard','member','member_level','member_points','member_exchange'] },
     cashier: { name: '收银员', pages: ['dashboard','sales','sales_order','sales_stats','sales_ranking','member','member_points'] },
     purchaser: { name: '采购员', pages: ['dashboard','purchase_in','supplier','supplier_contract','supplier_evaluation','inventory'] },
-    warehouse: { name: '仓管员', pages: ['dashboard','warehouse','inventory','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','purchase_in'] },
+    warehouse: { name: '仓管员', pages: ['dashboard','inventory','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','purchase_in'] },
     inventory: { name: '库存管理员', pages: ['dashboard','inventory','warehouse','inventory_check','inventory_alert','shelve','inventory_writeoff','warehouse_zones','purchase_in'] },
     finance: { name: '财务', pages: ['dashboard','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax'] },
 };
@@ -1451,7 +1451,7 @@ function canAccess(page) {
     const rolePages = ROLES[currentUser.role]?.pages || [];
     return rolePages.includes(page);
 }
-function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; if (currentUser.role === 'product_admin') { var warehousePages = ['warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones']; if (warehousePages.indexOf(currentPage) !== -1) return false; } return true; }
+function canEdit() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'inventory') return false; if (currentUser.role === 'warehouse' && currentPage === 'purchase_in') return false; if (currentUser.role === 'product_admin') { var warehousePages = ['warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones']; if (warehousePages.indexOf(currentPage) !== -1) return false; } return true; }
 function canEditWarehouse() { if (!currentUser) return false; if (currentUser.role === 'system_admin') return true; if (currentUser.role === 'product_admin') return false; if (currentUser.role === 'inventory') return false; return true; }
 
 async function navigateTo(page) {
@@ -4768,6 +4768,7 @@ function init_purchase_in() {
     refreshCurrentTable();
 }
 function addPurchase() {
+    if (currentUser.role === 'warehouse') { showToast('仓管员无权新增采购订单'); return; }
     const suppliers = loadData('suppliers');
     const products = loadData('products');
     const activeSuppliers = suppliers.filter(s=>s.status!=='暂停');
