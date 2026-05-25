@@ -3558,31 +3558,8 @@ function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
         voucherNo: orderNo
     });
     saveData('financeLedger', ledger);
-    // 处理会员
-    if (posMember) {
-        const members = loadData('members');
-        const m = members.find(x=>x.id===posMember.id);
-        if (m && m.status !== '冻结') {
-            m.totalSpent = (m.totalSpent||0) + finalAmount;
-            m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(finalAmount);
-            const earnedPoints = Math.floor(finalAmount);
-            m.points = (m.points||0) + earnedPoints;
-            m.lastConsumeDate = getToday();
-            // 自动升级
-            const levels = loadData('memberLevels');
-            levels.sort((a,b)=>b.minSpent-a.minSpent);
-            const newLevel = levels.find(l=>(m.totalSpent||0) >= (l.minSpent||0));
-            if (newLevel && newLevel.name !== m.level) {
-                m.level = newLevel.name;
-                showToast(`会员升级！→ ${newLevel.name}`);
-            }
-            saveData('members', members);
-            const records = loadData('memberPointsRecords');
-            records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:'消费¥'+formatMoney(finalAmount)+'奖励'+earnedPoints+'积分'});
-            saveData('memberPointsRecords', records);
-            addLog('会员消费: '+m.name+' ¥'+formatMoney(finalAmount)+', +'+earnedPoints+'积分');
-        }
-    }
+    // 会员数据已在服务端更新（total_spent/cumulativePoints/points/level），
+    // _apiSyncAll() 会从服务器拉取正确数据，此处不再本地重复更新以免覆盖服务端正确值
 }
 
 // 本地结算（API 不可用时的降级方案）
