@@ -157,6 +157,113 @@ function _syncToSqlTable(storeKey, rows) {
     });
     replaceAll(rows);
   }
+
+  // suppliers: INSERT OR REPLACE to handle both new and updated records
+  if (storeKey === 'suppliers') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO suppliers
+      (id, code, name, contact, phone, email, address, products, level, status, cooperation_date, bank_account, tax_id, notes, supply_capacity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const s of items) {
+        stmt.run(s.id, s.code || '', s.name || '', s.contact || '', s.phone || '',
+          s.email || '', s.address || '', s.products || '', s.level || '', s.status || '',
+          s.cooperationDate || s.cooperation_date || '', s.bankAccount || s.bank_account || '',
+          s.taxId || s.tax_id || '', s.notes || '', s.supplyCapacity || s.supply_capacity || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // employees: INSERT OR REPLACE
+  if (storeKey === 'employees') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO employees
+      (id, name, code, dept, position, phone, join_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const e of items) {
+        stmt.run(e.id, e.name || '', e.code || '', e.dept || e.department || '',
+          e.position || '', e.phone || '', e.joinDate || e.join_date || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // purchaseOrders: INSERT OR REPLACE
+  if (storeKey === 'purchaseOrders') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO purchase_orders
+      (id, order_no, supplier_id, supplier_name, items, total_amount, status, order_date, received_date, operator, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const o of items) {
+        stmt.run(o.id, o.orderNo || '', o.supplierId || '', o.supplierName || '',
+          JSON.stringify(o.items || []), o.totalAmount || 0, o.status || '待审核',
+          o.orderDate || '', o.receivedDate || o.expectedDate || '', o.operator || '', o.note || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // inventoryRecords: INSERT OR REPLACE
+  if (storeKey === 'inventoryRecords') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO inventory_records
+      (id, product_id, product_name, type, qty, before_stock, after_stock, operator, note, time)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const r of items) {
+        stmt.run(r.id, r.productId || r.product_id || '', r.productName || r.product_name || '',
+          r.type || '', r.qty || 0, r.beforeStock || r.before_stock || 0,
+          r.afterStock || r.after_stock || 0, r.operator || '', r.note || '',
+          r.time || r.time || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // financeLedger: INSERT OR REPLACE
+  if (storeKey === 'financeLedger') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO finance_ledger
+      (id, date, type, category, amount, account, summary, voucher_no, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const l of items) {
+        stmt.run(l.id, l.date || '', l.type || '', l.category || '', l.amount || 0,
+          l.account || '', l.summary || '', l.voucherNo || l.voucher_no || '',
+          l.createdAt || l.created_at || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // departments: INSERT OR REPLACE
+  if (storeKey === 'departments') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO departments
+      (id, name, code, manager, phone, status, create_date, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const d of items) {
+        stmt.run(d.id, d.name || '', d.code || '', d.manager || '', d.phone || '',
+          d.status || '正常', d.createDate || d.create_date || '', d.description || d.desc || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // attendances: DELETE + re-INSERT to propagate deletions
+  if (storeKey === 'attendances') {
+    const delStmt = db.prepare('DELETE FROM attendances');
+    const insStmt = db.prepare(`INSERT INTO attendances
+      (id, employee_id, employee_name, date, status, check_in, check_out, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const replaceAll = db.transaction((items) => {
+      delStmt.run();
+      for (const a of items) {
+        insStmt.run(a.id, a.employee_id || a.employeeId || '', a.employee_name || a.employeeName || '',
+          a.att_date || a.date || '', a.status || '', a.check_in || a.checkIn || '',
+          a.check_out || a.checkOut || '', a.note || '');
+      }
+    });
+    replaceAll(rows);
+  }
 }
 
 function syncAffectedTablesToDataStore() {
@@ -264,6 +371,88 @@ function syncAffectedTablesToDataStore() {
       description: p.description
     };
   })));
+
+  // Suppliers
+  const suppliers = db.prepare('SELECT * FROM suppliers ORDER BY id DESC').all();
+  upsert.run('suppliers', JSON.stringify(suppliers.map(s => ({
+    id: s.id, code: s.code, name: s.name, contact: s.contact,
+    phone: s.phone, email: s.email, address: s.address,
+    products: s.products, level: s.level, status: s.status,
+    cooperationDate: s.cooperation_date, bankAccount: s.bank_account,
+    taxId: s.tax_id, notes: s.notes, supplyCapacity: s.supply_capacity
+  }))));
+
+  // Employees
+  const employees = db.prepare('SELECT * FROM employees ORDER BY id DESC').all();
+  upsert.run('employees', JSON.stringify(employees.map(e => ({
+    id: e.id, name: e.name, code: e.code, dept: e.dept,
+    position: e.position, phone: e.phone, joinDate: e.join_date
+  }))));
+
+  // Departments
+  const departments = db.prepare('SELECT * FROM departments ORDER BY id').all();
+  upsert.run('departments', JSON.stringify(departments.map(d => ({
+    id: d.id, name: d.name, code: d.code, manager: d.manager,
+    phone: d.phone, status: d.status, createDate: d.create_date,
+    description: d.description
+  }))));
+
+  // PurchaseOrders
+  const purchaseOrders = db.prepare('SELECT * FROM purchase_orders ORDER BY id DESC').all();
+  upsert.run('purchaseOrders', JSON.stringify(purchaseOrders.map(o => ({
+    id: o.id, orderNo: o.order_no, supplierId: o.supplier_id,
+    supplierName: o.supplier_name,
+    items: typeof o.items === 'string' ? JSON.parse(o.items) : o.items,
+    totalAmount: o.total_amount, status: o.status,
+    orderDate: o.order_date, receivedDate: o.received_date,
+    operator: o.operator, note: o.note
+  }))));
+
+  // Attendances
+  const attendances = db.prepare('SELECT * FROM attendances ORDER BY id DESC').all();
+  upsert.run('attendances', JSON.stringify(attendances.map(a => ({
+    id: a.id, employee_id: a.employee_id, employee_name: a.employee_name,
+    att_date: a.date, status: a.status,
+    check_in: a.check_in, check_out: a.check_out, note: a.note
+  }))));
+
+  // SystemRoles
+  const roles = db.prepare('SELECT * FROM system_roles ORDER BY id').all();
+  upsert.run('systemRoles', JSON.stringify(roles.map(r => ({
+    id: r.id, name: r.name, permissions: r.permissions, description: r.description
+  }))));
+
+  // SystemMenus
+  const menus = db.prepare('SELECT * FROM system_menus ORDER BY sort, id').all();
+  upsert.run('systemMenus', JSON.stringify(menus.map(m => ({
+    id: m.id, name: m.name, code: m.code, type: m.type,
+    parent: m.parent, sort: m.sort, icon: m.icon,
+    visible: m.visible, status: m.status
+  }))));
+
+  // DictItems
+  const dictItems = db.prepare('SELECT * FROM dict_items ORDER BY id').all();
+  upsert.run('dictItems', JSON.stringify(dictItems.map(d => ({
+    id: d.id, typeName: d.type_name, dictLabel: d.dict_label,
+    dictValue: d.dict_value, sort: d.sort, status: d.status,
+    description: d.description
+  }))));
+
+  // Notices
+  const notices = db.prepare('SELECT * FROM notices ORDER BY id DESC').all();
+  upsert.run('notices', JSON.stringify(notices.map(n => ({
+    id: n.id, title: n.title, content: n.content, type: n.type,
+    publisher: n.publisher, publishDate: n.publish_date,
+    status: n.status, priority: n.priority
+  }))));
+
+  // MaintenanceRecords
+  const maintenances = db.prepare('SELECT * FROM maintenance_records ORDER BY id DESC').all();
+  upsert.run('maintenanceRecords', JSON.stringify(maintenances.map(m => ({
+    id: m.id, version: m.version, type: m.type, content: m.content,
+    operator: m.operator, planDate: m.plan_date, executeDate: m.execute_date,
+    duration: m.duration, status: m.status, result: m.result, rollback: m.rollback
+  }))));
 }
 
 // ==================== AUTH ROUTES ====================
