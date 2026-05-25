@@ -1991,7 +1991,7 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
             }
             merged = Array.from(serverMap.values());
           } else {
-            // 客户端数据决定存在性（删除了的记录不再保留），服务器仅补充字段
+            // 客户端数据为基准，服务器补充字段 + 保留服务器独有记录
             for (const row of existingRows) {
               const cr = mergedMap.get(row.id);
               if (cr) {
@@ -2003,8 +2003,10 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
                     cr[key] = sv;
                   }
                 }
+              } else {
+                // 服务器独有记录（其他客户端新增的）予以保留，防止被未知客户端覆盖删除
+                mergedMap.set(row.id, row);
               }
-              // 客户端没有的记录不再保留（已被其他客户端删除）
             }
             merged = Array.from(mergedMap.values());
           }

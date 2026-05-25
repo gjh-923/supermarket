@@ -509,10 +509,9 @@ async function _apiSyncAll() {
                 localStorage.setItem('sms_' + camelKey, JSON.stringify(transformed));
             }
         }
-        // 同步后立即修复数据一致性
+        // 同步后修复数据一致性（仅修复分类，会员统计在页面加载时运行，避免每3秒触发saveData推送风暴）
         try { deduplicateCategories(); } catch(e) {}
         try { syncProductCategories(); } catch(e) {}
-        try { recalcAllMemberStats(); autoMatchAllMemberLevels(); } catch(e) {}
         console.log('数据同步完成');
     } catch (e) { console.error('同步失败:', e.message); }
     finally { _isSyncing = false; }
@@ -4050,26 +4049,10 @@ function updateMemberStats() {
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
+    recalcAllMemberStats();
     autoMatchAllMemberLevels();
     refreshCurrentTable = () => {
-        // 渲染前强制重算全部会员等级
-        const allMembers = loadData('members');
-        const lvls = loadData('memberLevels');
-        let fixedCount = 0;
-        if (lvls.length) {
-            const sorted = [...lvls].sort((a,b)=>b.minSpent-a.minSpent);
-            allMembers.forEach(m => {
-                const spent = Number(m.totalSpent) || 0;
-                for (const lv of sorted) {
-                    if (spent >= (Number(lv.minSpent) || 0)) {
-                        if (m.level !== lv.name) { m.level = lv.name; fixedCount++; }
-                        break;
-                    }
-                }
-            });
-            if (fixedCount > 0) { saveData('members', allMembers); }
-        }
-        let data = allMembers;
+        let data = loadData('members');
         if (currentMemberStatusFilter !== '全部') {
             data = data.filter(m=>(m.status||'正常')===currentMemberStatusFilter);
         }
@@ -4605,6 +4588,7 @@ function updatePointsStats() {
     el('statPtsHasPoints', members.filter(function(m){return m.points>0;}).length);
 }
 function init_member_points() {
+    recalcAllMemberStats();
     updatePointsStats();
     refreshCurrentTable = () => { updatePointsStats(); renderTableData(loadData('members'),
         [{key:'name'},{key:'phone'},{key:'level',render:m=>{
