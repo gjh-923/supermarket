@@ -830,7 +830,7 @@ async function _checkApi() {
 
 // ==================== 数据定义 ====================
 const ROLES = {
-    system_admin: { name: '系统管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','sales','sales_order','sales_return','sales_stats','sales_ranking','member','member_level','member_points','member_exchange','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax','employee','employee_schedule','employee_attendance','employee_salary','supplier','supplier_contract','supplier_evaluation','system_users','system_roles','system_dept','system_post','system_menu','system_logs','system_login_logs','system_backup','system_monitor','system_settings','system_params','system_dict','system_notice','system_maintenance','employee_position'] },
+    system_admin: { name: '系统管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','purchase_in','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones','sales','sales_order','sales_stats','sales_ranking','member','member_level','member_points','member_exchange','finance','finance_report','finance_profit','finance_balance','finance_cashflow','finance_cost','finance_budget','finance_tax','finance_ledger','fin_cashier','fin_report','fin_cost','fin_budget','fin_tax','employee','employee_schedule','employee_attendance','employee_salary','supplier','supplier_contract','supplier_evaluation','system_users','system_roles','system_dept','system_post','system_menu','system_logs','system_login_logs','system_backup','system_monitor','system_settings','system_params','system_dict','system_notice','system_maintenance','employee_position'] },
     ops: { name: '运维人员', pages: ['dashboard','system_log_mgmt','system_backup_mgmt','system_maintenance','system_logs','system_login_logs','system_backup','system_monitor'] },
     hr: { name: '人事管理员', pages: ['dashboard','employee','employee_position','employee_schedule','employee_attendance','employee_salary'] },
     product_admin: { name: '商品管理员', pages: ['dashboard','product','category','inventory','price','promotion','warehouse','shelve','inventory_writeoff','inventory_check','inventory_alert','warehouse_zones'] },
@@ -1824,7 +1824,11 @@ function renderQuickProductTable() {
 
 function renderHREmployeeSummary() {
     const employees = loadData('employees');
-    const depts = [...new Set(employees.map(e=>e.dept))];
+    const positions = loadData('employeePositions');
+    // 根据员工岗位管理的 category 确定部门分布
+    const posCatMap = {};
+    positions.forEach(function(p) { posCatMap[p.name] = p.category || '未分类'; });
+    const depts = [...new Set(employees.map(function(e) { return posCatMap[e.position] || e.dept; }))];
     const schedules = loadData('schedules');
     const attendances = loadData('attendances');
     return `
@@ -1832,8 +1836,8 @@ function renderHREmployeeSummary() {
         <div style="background:white;border-radius:20px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
             <h3 style="color:#1f3b2c;margin-bottom:12px;font-size:0.95rem;">员工部门分布</h3>
             <div style="font-size:0.78rem;color:#5e7a5a;">
-                ${depts.map(d=>{
-                    const count = employees.filter(e=>e.dept===d).length;
+                ${depts.map(function(d){
+                    const count = employees.filter(function(e){ return (posCatMap[e.position] || e.dept) === d; }).length;
                     return `<div style="padding:6px 0;border-bottom:1px solid #edf3e7;display:flex;justify-content:space-between;"><span>${d}</span><span style="font-weight:600;">${count}人</span></div>`;
                 }).join('')}
             </div>
