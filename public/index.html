@@ -499,6 +499,19 @@ async function _apiSyncAll() {
                                     if (sv[finFields[_f]] != null) local[finFields[_f]] = sv[finFields[_f]];
                                 }
                             }
+                            // 库存盘点/预警：多用户共享数据，服务端状态为权威（其他用户可能已更新）
+                            if (camelKey === 'inventoryCheckTasks') {
+                                var invFields = ['status', 'checker', 'checkDate', 'completeTime', 'items'];
+                                for (var _ic = 0; _ic < invFields.length; _ic++) {
+                                    if (sv[invFields[_ic]] != null) local[invFields[_ic]] = sv[invFields[_ic]];
+                                }
+                            }
+                            if (camelKey === 'inventoryAlertSettings') {
+                                var alertFields = ['productCategory', 'minStock', 'maxStock', 'expiryDays', 'enabled'];
+                                for (var _ia = 0; _ia < alertFields.length; _ia++) {
+                                    if (sv[alertFields[_ia]] != null) local[alertFields[_ia]] = sv[alertFields[_ia]];
+                                }
+                            }
                             merged.push(local);
                             serverMap.delete(local.id);
                         } else {
