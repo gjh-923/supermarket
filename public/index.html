@@ -813,7 +813,7 @@ async function _apiUploadProductImage(file) {
     });
     const json = await res.json();
     if (json.code !== 0) throw new Error(json.message);
-    return API_BASE + json.data.url;
+    return json.data.url;  // 直接返回 data URL（base64），无需拼接 API_BASE
 }
 
 // 检查 API 是否可用

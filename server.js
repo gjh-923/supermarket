@@ -47,7 +47,7 @@ const upload = multer({
       cb(null, 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext);
     }
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 },  // 限制 2MB，base64 存入数据库
   fileFilter: (req, file, cb) => {
     const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
     cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
@@ -2486,8 +2486,13 @@ app.get('/api/export/all', (req, res) => {
 
 app.post('/api/upload/product-image', authMiddleware, upload.single('image'), (req, res) => {
   if (!req.file) return res.json(err('请选择图片文件'));
-  const url = '/uploads/' + req.file.filename;
-  res.json(ok({ url }));
+  // 将图片转为 base64 存入数据库，避免 Render 临时文件系统在部署后丢失图片
+  const b64 = fs.readFileSync(req.file.path).toString('base64');
+  const mime = req.file.mimetype || 'image/jpeg';
+  const dataUrl = 'data:' + mime + ';base64,' + b64;
+  // 删除临时文件以节省磁盘空间
+  try { fs.unlinkSync(req.file.path); } catch(e) {}
+  res.json(ok({ url: dataUrl }));
 });
 
 // ==================== POSITION MANAGEMENT (legacy positions table) ====================
