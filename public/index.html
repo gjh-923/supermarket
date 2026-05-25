@@ -1674,13 +1674,11 @@ document.getElementById('genericModal').addEventListener('click', function(e) { 
 // -- 系统首页 --
 function init_dashboard() {
     refreshCurrentTable = function() {
-        // 有弹窗打开时不刷新，避免打断用户操作
         if (document.querySelector('.modal-overlay.active')) return;
         var main = document.getElementById('mainContent');
         if (main) { main.innerHTML = pageRenderers['dashboard'](); setTimeout(animateCounters, 80); }
     };
-    // 进入仪表盘时立即同步一次，确保数据最新
-    if (_apiToken) { _apiSyncAll().catch(function(){}); }
+    if (_apiToken) { _apiSyncAll().then(function(){ refreshCurrentTable(); }).catch(function(){}); }
 }
 
 pageRenderers['dashboard'] = function() {
@@ -1696,9 +1694,18 @@ pageRenderers['dashboard'] = function() {
         const diff = Math.ceil((new Date(p.expiryDate)-new Date())/(1000*60*60*24));
         return diff >= 0 && diff <= 7;
     });
-    // 商品销量TOP5柱状图数据
-    const topProducts = [...products].sort((a,b)=>(b.sales||0)-(a.sales||0)).slice(0,5);
-    const maxSales = Math.max(...topProducts.map(p=>p.sales||0), 1);
+    // 商品销量TOP5柱状图数据 —— 与销售排行榜使用相同的订单聚合算法
+    const salesMap = {};
+    salesOrders.forEach(o=>{
+        (o.items||[]).forEach(item=>{
+            const key = item.productId||item.name;
+            if(!salesMap[key]) salesMap[key] = {count:0};
+            salesMap[key].count += item.qty||0;
+        });
+    });
+    const topProducts = products.map(p=>({...p, salesCount: (salesMap[p.id]||{count:0}).count}))
+        .sort((a,b)=>b.salesCount-a.salesCount).slice(0,5);
+    const maxSales = Math.max(...topProducts.map(p=>p.salesCount||0), 1);
     return `
     <div class="page active">
         <div class="page-header"><div><h1>系统首页</h1><div class="breadcrumb">系统首页 / 仪表盘</div></div><div style="color:#819e73;font-size:0.8rem">${getToday()} | ${ROLES[currentUser.role].name}工作台</div></div>
@@ -1714,7 +1721,7 @@ pageRenderers['dashboard'] = function() {
             </div>
             <div class="stats-chart-row">
                 <div class="chart-box fade-in"><h3 style="text-align:center;">📊 商品销量TOP5</h3>
-                    <div class="bar-chart">${topProducts.map(p=>`<div class="bar-col"><div class="bar-val">${p.sales||0}</div><div class="bar-fill" style="height:${Math.max((p.sales||0)/maxSales*100,4)}px;"></div><div class="bar-label">${(p.name||'').slice(0,4)}</div></div>`).join('')}</div>
+                    <div class="bar-chart">${topProducts.map(p=>`<div class="bar-col"><div class="bar-val">${p.salesCount||0}</div><div class="bar-fill" style="height:${Math.max((p.salesCount||0)/maxSales*100,4)}px;"></div><div class="bar-label">${(p.name||'').slice(0,4)}</div></div>`).join('')}</div>
                 </div>
                 <div class="chart-box fade-in"><h3 style="text-align:center;">📈 库存概览</h3>
                     <div style="display:flex;flex-direction:column;gap:8px;padding:8px;">
