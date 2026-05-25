@@ -3462,7 +3462,7 @@ function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
             // 自动升级
             const levels = loadData('memberLevels');
             levels.sort((a,b)=>b.minSpent-a.minSpent);
-            const newLevel = levels.find(l=>(m.cumulativePoints||0) >= (l.minSpent||0));
+            const newLevel = levels.find(l=>(m.totalSpent||0) >= (l.minSpent||0));
             if (newLevel && newLevel.name !== m.level) {
                 m.level = newLevel.name;
                 showToast(`会员升级！→ ${newLevel.name}`);
@@ -3545,7 +3545,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
                 m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(finalAmount);
                 const levels = loadData('memberLevels');
                 levels.sort((a,b)=>b.minSpent-a.minSpent);
-                const newLevel = levels.find(l=>(m.cumulativePoints||0) >= (l.minSpent||0));
+                const newLevel = levels.find(l=>(m.totalSpent||0) >= (l.minSpent||0));
                 const oldLevel = m.level;
                 if (newLevel && newLevel.name !== oldLevel) {
                     m.level = newLevel.name;
@@ -4424,10 +4424,10 @@ function autoMatchMemberLevel(member) {
     const levels = loadData('memberLevels');
     if (!levels.length) return;
     levels.sort((a,b)=>b.minSpent-a.minSpent);
-    const cumPts = member.cumulativePoints || 0;
+    const spent = member.totalSpent || 0;
     let matched = levels[levels.length-1];
     for (const lv of levels) {
-        if (cumPts >= (lv.minSpent || 0)) { matched = lv; break; }
+        if (spent >= (lv.minSpent || 0)) { matched = lv; break; }
     }
     if (member.level !== matched.name) {
         member.level = matched.name;
