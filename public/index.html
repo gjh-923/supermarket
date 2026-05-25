@@ -535,7 +535,8 @@ function startAutoSync() {
     _syncTimer = setInterval(async () => {
         if (!_apiToken) return;
         await _apiSyncAll();
-        _refreshCurrentView();
+        // 静默同步：只更新 localStorage，不刷新界面
+        // 用户自身操作通过 saveData 的 debounced sync 触发刷新
     }, 3000);
 }
 function stopAutoSync() {
