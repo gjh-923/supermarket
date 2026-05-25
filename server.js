@@ -264,6 +264,198 @@ function _syncToSqlTable(storeKey, rows) {
     });
     replaceAll(rows);
   }
+
+  // === exchangeRewards ===
+  if (storeKey === 'exchangeRewards') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO exchange_rewards (id, name, points, type, enabled)
+      VALUES (?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const r of items) {
+        stmt.run(r.id, r.name || '', r.points || 0, r.type || 'coupon', r.enabled !== false ? 1 : 0);
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === supplierContracts ===
+  if (storeKey === 'supplierContracts') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO supplier_contracts
+      (id, supplier_id, supplier_name, contract_no, sign_date, expiry_date, amount, status, type, payment_terms, scope, attachment, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const c of items) {
+        stmt.run(c.id, c.supplierId || c.supplier_id || '', c.supplierName || c.supplier_name || '',
+          c.contractNo || c.contract_no || '', c.signDate || c.sign_date || '',
+          c.expiryDate || c.expiry_date || '', c.amount || 0, c.status || '生效中',
+          c.type || '年度框架合同', c.paymentTerms || c.payment_terms || '',
+          c.scope || '', c.attachment || '', c.notes || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === supplierEvaluations ===
+  if (storeKey === 'supplierEvaluations') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO supplier_evaluations
+      (id, supplier_id, supplier_name, rating, quality, delivery, price, service, comment, evaluator, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const e of items) {
+        stmt.run(e.id, e.supplierId || e.supplier_id || '', e.supplierName || e.supplier_name || '',
+          e.rating || 3, e.quality || 3, e.delivery || 3, e.price || 3, e.service || 3,
+          e.comment || '', e.evaluator || '', e.date || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === employeePositions ===
+  if (storeKey === 'employeePositions') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO employee_positions
+      (id, name, category, description, employee_ids, employee_names)
+      VALUES (?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const p of items) {
+        stmt.run(p.id, p.name || '', p.category || '', p.description || '',
+          JSON.stringify(p.employeeIds || p.employee_ids || []),
+          JSON.stringify(p.employeeNames || p.employee_names || []));
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === warehouseZones ===
+  if (storeKey === 'warehouseZones') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO warehouse_zones
+      (id, name, location, capacity, current, manager, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const z of items) {
+        stmt.run(z.id, z.name || '', z.location || '', z.capacity || 0,
+          z.current || 0, z.manager || '', z.status || '使用中');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === inventoryAlertSettings ===
+  if (storeKey === 'inventoryAlertSettings') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO inventory_alert_settings
+      (id, product_category, min_stock, max_stock, expiry_days, enabled)
+      VALUES (?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const a of items) {
+        stmt.run(a.id, a.productCategory || a.product_category || '全部',
+          a.minStock || a.min_stock || 50, a.maxStock || a.max_stock || 2000,
+          a.expiryDays || a.expiry_days || 30, a.enabled !== false ? 1 : 0);
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === inventoryCheckTasks ===
+  if (storeKey === 'inventoryCheckTasks') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO inventory_check_tasks
+      (id, task_no, name, warehouse_zone, status, checker, check_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const t of items) {
+        stmt.run(t.id, t.taskNo || t.task_no || '', t.name || '',
+          t.warehouseZone || t.warehouse_zone || '', t.status || '待盘点',
+          t.checker || '', t.checkDate || t.check_date || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === inventoryCheckItems ===
+  if (storeKey === 'inventoryCheckItems') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO inventory_check_items
+      (id, task_id, product_id, product_name, system_stock, actual_stock, diff, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const i of items) {
+        stmt.run(i.id, i.taskId || i.task_id || null, i.productId || i.product_id || null,
+          i.productName || i.product_name || '', i.systemStock || i.system_stock || 0,
+          i.actualStock || i.actual_stock || 0, i.diff || 0, i.note || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === financeBudget ===
+  if (storeKey === 'financeBudget') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO finance_budget
+      (id, year, month, category, budget_amount, actual_amount, department)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const b of items) {
+        stmt.run(b.id, b.year || null, b.month || null, b.category || '',
+          b.budgetAmount || b.budget_amount || 0, b.actualAmount || b.actual_amount || 0,
+          b.department || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === financeTax ===
+  if (storeKey === 'financeTax') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO finance_tax
+      (id, tax_name, tax_rate, taxable_amount, tax_amount, period, status, due_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const t of items) {
+        stmt.run(t.id, t.taxName || t.tax_name || '', t.taxRate || t.tax_rate || 0,
+          t.taxableAmount || t.taxable_amount || 0, t.taxAmount || t.tax_amount || 0,
+          t.period || '', t.status || '待申报', t.dueDate || t.due_date || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === systemParams ===
+  if (storeKey === 'systemParams') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO system_params
+      (id, name, code, value, description)
+      VALUES (?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const p of items) {
+        stmt.run(p.id, p.name || '', p.code || '', p.value || '', p.description || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === monitorConfigs ===
+  if (storeKey === 'monitorConfigs') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO monitor_configs
+      (id, name, target, check_interval, status, last_check_time, alert_threshold, enabled, current_value)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const m of items) {
+        stmt.run(m.id, m.name || '', m.target || '', m.checkInterval || m.check_interval || 60,
+          m.status || '正常', m.lastCheckTime || m.last_check_time || '',
+          m.alertThreshold || m.alert_threshold || 80, m.enabled !== false ? 1 : 0,
+          m.currentValue || m.current_value || '');
+      }
+    });
+    insertMany(rows);
+  }
+
+  // === loginLogs ===
+  if (storeKey === 'loginLogs') {
+    const stmt = db.prepare(`INSERT OR REPLACE INTO login_logs
+      (id, username, real_name, ip, browser, os, login_time, status, message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((items) => {
+      for (const l of items) {
+        stmt.run(l.id, l.username || '', l.realName || l.real_name || '',
+          l.ip || '', l.browser || '', l.os || '',
+          l.loginTime || l.login_time || '', l.status || '', l.message || '');
+      }
+    });
+    insertMany(rows);
+  }
 }
 
 function syncAffectedTablesToDataStore() {
