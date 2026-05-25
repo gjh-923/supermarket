@@ -453,6 +453,115 @@ function syncAffectedTablesToDataStore() {
     operator: m.operator, planDate: m.plan_date, executeDate: m.execute_date,
     duration: m.duration, status: m.status, result: m.result, rollback: m.rollback
   }))));
+
+  // SupplierContracts
+  const supplierContracts = db.prepare('SELECT * FROM supplier_contracts ORDER BY id DESC').all();
+  upsert.run('supplierContracts', JSON.stringify(supplierContracts.map(c => ({
+    id: c.id, supplierId: c.supplier_id, supplierName: c.supplier_name,
+    contractNo: c.contract_no, signDate: c.sign_date, expiryDate: c.expiry_date,
+    amount: c.amount, status: c.status, type: c.type,
+    paymentTerms: c.payment_terms, scope: c.scope, attachment: c.attachment,
+    notes: c.notes, createdAt: c.created_at
+  }))));
+
+  // SupplierEvaluations
+  const supplierEvaluations = db.prepare('SELECT * FROM supplier_evaluations ORDER BY id DESC').all();
+  upsert.run('supplierEvaluations', JSON.stringify(supplierEvaluations.map(e => ({
+    id: e.id, supplierId: e.supplier_id, supplierName: e.supplier_name,
+    rating: e.rating, quality: e.quality, delivery: e.delivery,
+    price: e.price, service: e.service, comment: e.comment,
+    evaluator: e.evaluator, date: e.date, createdAt: e.created_at
+  }))));
+
+  // EmployeePositions
+  const employeePositions = db.prepare('SELECT * FROM employee_positions ORDER BY id').all();
+  upsert.run('employeePositions', JSON.stringify(employeePositions.map(p => ({
+    id: p.id, name: p.name, category: p.category, description: p.description,
+    employeeIds: typeof p.employee_ids === 'string' ? JSON.parse(p.employee_ids) : (p.employee_ids || []),
+    employeeNames: typeof p.employee_names === 'string' ? JSON.parse(p.employee_names) : (p.employee_names || []),
+    createdAt: p.created_at
+  }))));
+
+  // Salaries
+  const salaries = db.prepare('SELECT * FROM salaries ORDER BY id DESC').all();
+  upsert.run('salaries', JSON.stringify(salaries.map(s => ({
+    id: s.id, employee_id: s.employee_id, employee_name: s.employee_name,
+    year: s.year, month: s.month, salary_month: `${s.year}-${String(s.month).padStart(2,'0')}`,
+    baseSalary: s.base_salary, overtimePay: s.overtime_pay,
+    bonus: s.bonus, deduction: s.deduction, total: s.total,
+    status: s.status, created_at: s.created_at
+  }))));
+
+  // InventoryAlertSettings
+  const inventoryAlertSettings = db.prepare('SELECT * FROM inventory_alert_settings ORDER BY id').all();
+  upsert.run('inventoryAlertSettings', JSON.stringify(inventoryAlertSettings.map(a => ({
+    id: a.id, productCategory: a.product_category, minStock: a.min_stock,
+    maxStock: a.max_stock, expiryDays: a.expiry_days, enabled: !!a.enabled
+  }))));
+
+  // InventoryCheckTasks
+  const inventoryCheckTasks = db.prepare('SELECT * FROM inventory_check_tasks ORDER BY id DESC').all();
+  upsert.run('inventoryCheckTasks', JSON.stringify(inventoryCheckTasks.map(t => ({
+    id: t.id, taskNo: t.task_no, name: t.name, warehouseZone: t.warehouse_zone,
+    status: t.status, checker: t.checker, checkDate: t.check_date, createdAt: t.created_at
+  }))));
+
+  // InventoryCheckItems
+  const inventoryCheckItems = db.prepare('SELECT * FROM inventory_check_items ORDER BY id').all();
+  upsert.run('inventoryCheckItems', JSON.stringify(inventoryCheckItems.map(i => ({
+    id: i.id, taskId: i.task_id, productId: i.product_id, productName: i.product_name,
+    systemStock: i.system_stock, actualStock: i.actual_stock, diff: i.diff, note: i.note
+  }))));
+
+  // WarehouseZones
+  const warehouseZones = db.prepare('SELECT * FROM warehouse_zones ORDER BY id').all();
+  upsert.run('warehouseZones', JSON.stringify(warehouseZones.map(z => ({
+    id: z.id, name: z.name, location: z.location, capacity: z.capacity,
+    current: z.current, manager: z.manager, status: z.status
+  }))));
+
+  // FinanceBudget
+  const financeBudget = db.prepare('SELECT * FROM finance_budget ORDER BY id DESC').all();
+  upsert.run('financeBudget', JSON.stringify(financeBudget.map(b => ({
+    id: b.id, year: b.year, month: b.month, category: b.category,
+    budgetAmount: b.budget_amount, actualAmount: b.actual_amount, department: b.department
+  }))));
+
+  // FinanceTax
+  const financeTax = db.prepare('SELECT * FROM finance_tax ORDER BY id DESC').all();
+  upsert.run('financeTax', JSON.stringify(financeTax.map(t => ({
+    id: t.id, taxName: t.tax_name, taxRate: t.tax_rate,
+    taxableAmount: t.taxable_amount, taxAmount: t.tax_amount,
+    period: t.period, status: t.status, dueDate: t.due_date
+  }))));
+
+  // SystemParams
+  const systemParams = db.prepare('SELECT * FROM system_params ORDER BY id').all();
+  upsert.run('systemParams', JSON.stringify(systemParams.map(p => ({
+    id: p.id, name: p.name, code: p.code, value: p.value, description: p.description
+  }))));
+
+  // MonitorConfigs
+  const monitorConfigs = db.prepare('SELECT * FROM monitor_configs ORDER BY id').all();
+  upsert.run('monitorConfigs', JSON.stringify(monitorConfigs.map(m => ({
+    id: m.id, name: m.name, target: m.target, checkInterval: m.check_interval,
+    status: m.status, lastCheckTime: m.last_check_time,
+    alertThreshold: m.alert_threshold, enabled: !!m.enabled, currentValue: m.current_value
+  }))));
+
+  // LoginLogs
+  const loginLogs = db.prepare('SELECT * FROM login_logs ORDER BY id DESC').all();
+  upsert.run('loginLogs', JSON.stringify(loginLogs.map(l => ({
+    id: l.id, username: l.username, realName: l.real_name,
+    ip: l.ip, browser: l.browser, os: l.os,
+    loginTime: l.login_time, status: l.status, message: l.message
+  }))));
+
+  // ExchangeRewards
+  const exchangeRewards = db.prepare('SELECT * FROM exchange_rewards ORDER BY id').all();
+  upsert.run('exchangeRewards', JSON.stringify(exchangeRewards.map(r => ({
+    id: r.id, name: r.name, points: r.points, type: r.type, enabled: !!r.enabled
+  }))));
 }
 
 // ==================== AUTH ROUTES ====================
@@ -1077,7 +1186,7 @@ app.get('/api/sales-orders', (req, res) => {
 
 app.post('/api/sales/checkout', authMiddleware, (req, res) => {
   try {
-    const { cart, memberId, useCoupon, selectedCoupon, payMethod } = req.body;
+    const { cart, memberId, useCoupon, couponDiscount: reqCouponDiscount, couponCost: reqCouponCost, payMethod } = req.body;
     if (!cart || !Array.isArray(cart) || cart.length === 0) return res.json(err('购物车为空'));
 
     // ===== 促销引擎（服务端） =====
@@ -1206,22 +1315,23 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
           discountAmount = totalAmount * (1 - level.discount / 100);
         }
         // Apply coupon
-        if (useCoupon && selectedCoupon && selectedCoupon.name) {
-          couponName = selectedCoupon.name;
-          couponDiscount = selectedCoupon.discount || selectedCoupon.points / 100 || 0;
-          // Deduct points from member
-          if (selectedCoupon.points) {
-            db.prepare('UPDATE members SET points = MAX(0, points - ?) WHERE id = ?').run(selectedCoupon.points, memberId);
+        if (useCoupon && reqCouponDiscount > 0) {
+          couponDiscount = reqCouponDiscount;
+          couponName = '代金券';
+          if (reqCouponCost > 0) {
+            db.prepare('UPDATE members SET points = MAX(0, points - ?) WHERE id = ?').run(reqCouponCost, memberId);
           }
         }
-        // Give points for the purchase
-        const pointsEarned = Math.floor(totalAmount);
-        if (pointsEarned > 0) {
-          db.prepare('UPDATE members SET points = points + ?, total_spent = total_spent + ?, cumulative_points = cumulative_points + ? WHERE id = ?')
-            .run(pointsEarned, totalAmount, totalAmount, memberId);
-          db.prepare(`INSERT INTO member_points_records (member_id, member_name, type, points, balance, time, operator, note)
-            VALUES (?, ?, '消费获取', ?, (SELECT points FROM members WHERE id=?), datetime('now','localtime'), ?, ?)`)
-            .run(memberId, memberName, pointsEarned, memberId, req.user.name, `消费¥${totalAmount.toFixed(2)}奖励积分`);
+        // 冻结会员不更新积分和消费金额
+        if (member.status !== '冻结') {
+          const pointsEarned = Math.floor(totalAmount);
+          if (pointsEarned > 0) {
+            db.prepare('UPDATE members SET points = points + ?, total_spent = total_spent + ?, cumulative_points = cumulative_points + ? WHERE id = ?')
+              .run(pointsEarned, totalAmount, totalAmount, memberId);
+            db.prepare(`INSERT INTO member_points_records (member_id, member_name, type, points, balance, time, operator, note)
+              VALUES (?, ?, '消费获取', ?, (SELECT points FROM members WHERE id=?), datetime('now','localtime'), ?, ?)`)
+              .run(memberId, memberName, pointsEarned, memberId, req.user.name, `消费¥${totalAmount.toFixed(2)}奖励积分`);
+          }
         }
         // Update member last consume date
         db.prepare('UPDATE members SET last_consume_date = ? WHERE id = ?').run(new Date().toISOString().slice(0, 10), memberId);

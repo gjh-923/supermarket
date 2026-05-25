@@ -442,11 +442,8 @@ async function _apiSyncAll() {
             const existing = localStorage.getItem('sms_' + camelKey);
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
-            // 服务器返回空数组：只有本地也为空才跳过（否则是全部删除，需要清空本地）
+            // 服务器返回空数组：跳过，保留本地数据（防止data_store未初始化时误清本地）
             if (Array.isArray(data) && data.length === 0) {
-                if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) continue;
-                // 服务器为空但本地有数据 → 全部被其他用户删除，清空本地
-                localStorage.setItem('sms_' + camelKey, '[]');
                 continue;
             }
             // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
@@ -706,8 +703,8 @@ function _normalizeData(key, data) {
     return data;
 }
 
-async function _apiCheckout(cart, memberId, useCoupon, selectedCoupon, payMethod) {
-    return await _apiPost('/api/sales/checkout', { cart, memberId, useCoupon, selectedCoupon, payMethod });
+async function _apiCheckout(cart, memberId, useCoupon, couponDiscount, couponCost, payMethod) {
+    return await _apiPost('/api/sales/checkout', { cart, memberId, useCoupon, couponDiscount, couponCost, payMethod });
 }
 
 async function _apiSaveProduct(product) {
@@ -3496,7 +3493,7 @@ function checkout() {
     }));
     _checkoutInProgress = true;
     _checkoutTimer = Date.now();
-    _apiCheckout(cartForApi, posMember?.id||null, useCoupon, selectedCoupon, payMethod).then(async result => {
+    _apiCheckout(cartForApi, posMember?.id||null, useCoupon, actualCouponDiscount, couponCost, payMethod).then(async result => {
         console.log('API结算成功:', result.orderNo);
         showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
         // Save order locally using server's orderNo so reports see it immediately
@@ -3632,11 +3629,11 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
             if (isFrozen) {
                 showToast('该会员已被冻结，积分和消费金额不更新');
             } else {
-                m.totalSpent = (m.totalSpent||0) + finalAmount;
+                m.totalSpent = (m.totalSpent||0) + total;
                 const lvl = loadData('memberLevels').find(l=>l.name===m.level);
-                const earnedPoints = Math.floor(finalAmount);
+                const earnedPoints = Math.floor(total);
                 m.points = (m.points||0) + earnedPoints;
-                m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(finalAmount);
+                m.cumulativePoints = (m.cumulativePoints||0) + Math.floor(total);
                 const levels = loadData('memberLevels');
                 levels.sort((a,b)=>b.minSpent-a.minSpent);
                 const newLevel = levels.find(l=>(m.totalSpent||0) >= (l.minSpent||0));
@@ -3647,9 +3644,9 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
                 }
                 saveData('members', members);
                 const records = loadData('memberPointsRecords');
-                records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:`消费¥${formatMoney(finalAmount)}奖励${earnedPoints}积分`});
+                records.push({id:makeId(), memberId:m.id, memberName:m.name, type:'消费获取', points:earnedPoints, balance:m.points, time:new Date().toLocaleString(), operator:'系统', note:`消费¥${formatMoney(total)}奖励${earnedPoints}积分`});
                 saveData('memberPointsRecords', records);
-                addLog(`会员消费: ${m.name} ¥${formatMoney(finalAmount)}, +${earnedPoints}积分, 累计¥${formatMoney(m.totalSpent)}`);
+                addLog(`会员消费: ${m.name} ¥${formatMoney(total)}, +${earnedPoints}积分, 累计¥${formatMoney(m.totalSpent)}`);
             }
             saveData('members', members);
         }
