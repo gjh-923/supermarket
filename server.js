@@ -748,7 +748,7 @@ function syncAffectedTablesToDataStore() {
         systemStock: i.system_stock, actualStock: i.actual_stock, diff: i.diff, note: i.note
       }))
     };
-  }))));
+  })));
 
   // InventoryCheckItems
   const inventoryCheckItems = db.prepare('SELECT * FROM inventory_check_items ORDER BY id').all();
