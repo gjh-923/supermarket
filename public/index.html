@@ -506,7 +506,7 @@ function startAutoSync() {
         if (!_apiToken) return;
         await _apiSyncAll();
         _refreshCurrentView();
-    }, 8000);
+    }, 3000);
 }
 function stopAutoSync() {
     if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
@@ -1060,6 +1060,7 @@ function loadData(key) {
     const raw = d ? JSON.parse(d) : JSON.parse(JSON.stringify(DEFAULT_DATA[key]));
     return _normalizeData(key, raw);
 }
+var _syncDebounceTimer = null;
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
     if (_apiToken && !(Array.isArray(data) && data.length === 0)) {
@@ -1068,6 +1069,13 @@ function saveData(key, data) {
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
             body: JSON.stringify({ data: Array.isArray(data) ? data : Object.values(data) })
         }).catch(() => {});
+        // 修改后立即拉取一次同步，让其他用户看到更新
+        if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+        _syncDebounceTimer = setTimeout(async () => {
+            _syncDebounceTimer = null;
+            await _apiSyncAll();
+            _refreshCurrentView();
+        }, 500);
     }
 }
 function initAllData() {
