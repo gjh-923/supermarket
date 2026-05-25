@@ -753,10 +753,10 @@ app.post('/api/schedules/batch', authMiddleware, (req, res) => {
   // Delete existing schedules for this date
   db.prepare('DELETE FROM schedules WHERE date = ?').run(dateStr);
   // Insert new shifts
-  const stmt = db.prepare('INSERT INTO schedules (employee_id, employee_name, date, shift) VALUES (?, ?, ?, ?)');
+  const stmt = db.prepare('INSERT INTO schedules (id, employee_id, employee_name, date, shift) VALUES (?, ?, ?, ?, ?)');
   const insertMany = db.transaction((items) => {
     for (const s of items) {
-      stmt.run(s.employeeId ?? s.employee_id, s.employeeName || s.employee_name || '', dateStr, s.shift || '早班');
+      stmt.run(s.id, s.employeeId ?? s.employee_id, s.employeeName || s.employee_name || '', dateStr, s.shift || '早班');
     }
   });
   insertMany(shifts);
@@ -787,10 +787,10 @@ app.post('/api/attendances/batch', authMiddleware, (req, res) => {
   if (!date || !recs || !Array.isArray(recs)) return res.json(err('参数错误'));
   // Delete existing records for this date
   db.prepare('DELETE FROM attendances WHERE date = ?').run(date);
-  const stmt = db.prepare('INSERT INTO attendances (employee_id, employee_name, date, status, check_in, check_out, late_minutes, early_minutes, overtime_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const stmt = db.prepare('INSERT INTO attendances (id, employee_id, employee_name, date, status, check_in, check_out, late_minutes, early_minutes, overtime_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const insertMany = db.transaction((items) => {
     for (const r of items) {
-      stmt.run(r.employeeId, r.employeeName || '', date, r.status || '正常', r.checkIn || '', r.checkOut || '',
+      stmt.run(r.id, r.employeeId ?? r.employee_id, r.employeeName || r.employee_name || '', date, r.status || '正常', r.checkIn || r.check_in || '', r.checkOut || r.check_out || '',
         r.lateMinutes || 0, r.earlyMinutes || 0, r.overtimeMinutes || 0, r.note || '');
     }
   });
