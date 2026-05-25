@@ -442,22 +442,11 @@ async function _apiSyncAll() {
             const existing = localStorage.getItem('sms_' + camelKey);
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
-            // 服务器返回空数组：判断是"未同步的新数据"还是"远程已删除"
+            // 服务器返回空数组：只有本地也为空才跳过（否则是全部删除，需要清空本地）
             if (Array.isArray(data) && data.length === 0) {
                 if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) continue;
-                var modAge = _lastModTime[camelKey] ? (Date.now() - _lastModTime[camelKey]) : 999999;
-                if (modAge < 10000) {
-                    // 本地数据最近刚修改，可能是服务器还没收到 → 推送本地到服务器
-                    fetch(API_BASE + '/api/sync/' + camelKey, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _apiToken },
-                        body: JSON.stringify(Array.isArray(parsed) ? parsed : Object.values(parsed))
-                    }).catch(function(){});
-                    continue;
-                }
-                // 本地数据较旧 → 远程确实已全部删除，清空本地
+                // 服务器为空但本地有数据 → 全部被其他用户删除，清空本地
                 localStorage.setItem('sms_' + camelKey, '[]');
-                _lastModTime[camelKey] = 0;
                 continue;
             }
             // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
@@ -552,6 +541,8 @@ function startAutoSync() {
         if (!_apiToken) return;
         await _apiSyncAll();
         // 静默刷新表格数据（仅更新表格行，不重建整个页面）
+        // 跳过仪表盘和收银页面：仪表盘是统计页面无需实时刷新，收银页面有自己的购物车状态保护
+        if (currentPage === 'dashboard' || currentPage === 'sales') return;
         if (_currentRefreshPage === currentPage && typeof refreshCurrentTable === 'function') {
             try { refreshCurrentTable(); } catch(e) {}
         }
@@ -1104,7 +1095,6 @@ const DEFAULT_DATA = {
 };
 
 // localStorage 读写
-var _lastModTime = {};
 function loadData(key) {
     const d = localStorage.getItem('sms_'+key);
     const raw = d ? JSON.parse(d) : JSON.parse(JSON.stringify(DEFAULT_DATA[key]));
@@ -1113,7 +1103,6 @@ function loadData(key) {
 var _syncDebounceTimer = null;
 function saveData(key, data) {
     localStorage.setItem('sms_'+key, JSON.stringify(data));
-    _lastModTime[key] = Date.now();
     if (_apiToken && !(Array.isArray(data) && data.length === 0)) {
         fetch(API_BASE + '/api/sync/' + key, {
             method: 'POST',
