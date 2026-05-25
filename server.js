@@ -1378,7 +1378,7 @@ app.get('/api/sales-orders', (req, res) => {
 
 app.post('/api/sales/checkout', authMiddleware, (req, res) => {
   try {
-    const { cart, memberId, useCoupon, couponDiscount: reqCouponDiscount, couponCost: reqCouponCost, payMethod } = req.body;
+    const { cart, memberId, useCoupon, couponDiscount: reqCouponDiscount, couponCost: reqCouponCost, bundleDiscount: reqBundleDiscount, payMethod } = req.body;
     if (!cart || !Array.isArray(cart) || cart.length === 0) return res.json(err('购物车为空'));
 
     // ===== 促销引擎（服务端） =====
@@ -1488,6 +1488,9 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
         insertInvRecord.run(item.productId, item.name, -item.qty, product.stock + item.qty, product.stock, req.user.name, 'POS销售');
       }
     }
+
+    // Apply bundle/满减 discount (before member discount so member discount applies to reduced amount)
+    totalAmount = Math.max(0, totalAmount - (reqBundleDiscount || 0));
 
     // Handle member & coupon
     let discountAmount = 0;
