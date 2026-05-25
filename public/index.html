@@ -344,14 +344,14 @@ let _apiUser = null;
 let _syncTimer = null;
 let _isSyncing = false;
 
-async function _apiRequest(method, path, body) {
+async function _apiRequest(method, path, body, timeoutMs) {
     const headers = { 'Content-Type': 'application/json' };
     if (_apiToken) headers['Authorization'] = 'Bearer ' + _apiToken;
     const opts = { method, headers };
     if (body && method !== 'GET') opts.body = JSON.stringify(body);
     const controller = new AbortController();
     opts.signal = controller.signal;
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs || 8000);
     try {
         const res = await fetch(API_BASE + path, opts);
         clearTimeout(timeout);
@@ -372,7 +372,7 @@ async function _apiRequest(method, path, body) {
     }
 }
 
-async function _apiGet(path) { return _apiRequest('GET', path); }
+async function _apiGet(path, timeoutMs) { return _apiRequest('GET', path, null, timeoutMs); }
 async function _apiPost(path, data) { return _apiRequest('POST', path, data); }
 async function _apiPut(path, data) { return _apiRequest('PUT', path, data); }
 async function _apiDel(path) { return _apiRequest('DELETE', path); }
@@ -435,7 +435,7 @@ async function _apiSyncAll() {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
-        const allData = await _apiGet('/api/export/all?_=' + Date.now());
+        const allData = await _apiGet('/api/export/all?_=' + Date.now(), 30000);
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);

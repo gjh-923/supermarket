@@ -2448,21 +2448,23 @@ app.get('/api/export/all', (req, res) => {
       'loginLogs', 'systemLogs', 'maintenanceRecords', 'exchangeRewards'
     ];
 
+    // 单次查询获取所有 data_store 数据，避免 30+ 次独立 SQL 查询
+    const allRows = db.prepare('SELECT key, data FROM data_store').all();
+    const dataMap = {};
+    for (const row of allRows) {
+      dataMap[row.key] = row.data;
+    }
+
     const allData = {};
     for (const key of frontendKeys) {
-      try {
-        // 先从JSON存储读取（前端同步的数据）
-        const row = db.prepare('SELECT data FROM data_store WHERE key = ?').get(key);
-        if (row && row.data) {
-          try {
-            allData[key] = JSON.parse(row.data);
-          } catch(e) {
-            allData[key] = [];
-          }
-        } else {
+      const raw = dataMap[key];
+      if (raw) {
+        try {
+          allData[key] = JSON.parse(raw);
+        } catch(e) {
           allData[key] = [];
         }
-      } catch (e) {
+      } else {
         allData[key] = [];
       }
     }
