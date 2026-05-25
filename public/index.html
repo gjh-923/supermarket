@@ -1655,6 +1655,17 @@ document.getElementById('genericModal').addEventListener('click', function(e) { 
 // ==================== 各页面渲染器 ====================
 
 // -- 系统首页 --
+function init_dashboard() {
+    refreshCurrentTable = function() {
+        // 有弹窗打开时不刷新，避免打断用户操作
+        if (document.querySelector('.modal-overlay.active')) return;
+        var main = document.getElementById('mainContent');
+        if (main) { main.innerHTML = pageRenderers['dashboard'](); setTimeout(animateCounters, 80); }
+    };
+    // 进入仪表盘时立即同步一次，确保数据最新
+    if (_apiToken) { _apiSyncAll().catch(function(){}); }
+}
+
 pageRenderers['dashboard'] = function() {
     const products = loadData('products');
     const members = loadData('members');
