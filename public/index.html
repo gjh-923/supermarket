@@ -545,6 +545,7 @@ function startAutoSync() {
     _syncTimer = setInterval(async () => {
         if (!_apiToken) return;
         await _apiSyncAll();
+        _dedupSalesOrders();
         // 静默刷新表格数据（仅更新表格行，不重建整个页面）
         // 跳过仪表盘和收银页面：仪表盘是统计页面无需实时刷新，收银页面有自己的购物车状态保护
         if (currentPage === 'dashboard' || currentPage === 'sales') return;
@@ -3497,9 +3498,11 @@ function checkout() {
         console.log('API结算成功:', result.orderNo);
         showToast(`结算成功！金额: ¥${formatMoney(result.finalAmount || finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
         // Save order locally using server's orderNo so reports see it immediately
-        _localSaveOrder(result.orderNo, result.finalAmount || finalAmount, payMethod, total);
+        _localSaveOrder(result.orderNo, result.finalAmount || finalAmount, payMethod, total, discountRate, actualCouponDiscount, bundleDiscount);
         // Also sync full data from server for multi-user consistency
         try { await _apiSyncAll(); } catch(e) { console.warn('全量同步失败:', e.message); }
+        // Deduplicate: remove local order if server already has the same orderNo
+        _dedupSalesOrders();
     }).catch(async e => {
         console.warn('API结算失败，使用本地结算:', e.message);
         localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount, couponCost, discountRate, payMethod);
@@ -3529,7 +3532,10 @@ function getCashierName() {
 }
 
 // 本地保存服务端返回的订单（API结算成功后确保本地立即可见）
-function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
+function _localSaveOrder(orderNo, finalAmount, payMethod, total, discountRate, couponDiscount, bundleDiscount) {
+    const discountRateVal = discountRate || 100;
+    const couponVal = couponDiscount || 0;
+    const bundleVal = bundleDiscount || 0;
     const products = loadData('products');
     posCart.forEach(item => {
         const p = products.find(x=>x.id===item.productId);
@@ -3545,11 +3551,21 @@ function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
         }
     });
     saveData('inventoryRecords', invRecords);
+    // 计算真实原价（零售价总和，不含任何折扣）
+    let originalTotal = 0;
+    posCart.forEach(item => {
+        const p = products.find(x=>x.id===item.productId);
+        originalTotal += (p ? p.retailPrice || item.price : item.price) * item.qty;
+    });
+    const discountAmount = discountRateVal < 100 ? Math.round(total * (100 - discountRateVal)) / 100 : 0;
     // 保存订单
     const orders = loadData('salesOrders');
     orders.push({
         id: makeId(), orderNo: orderNo, items: JSON.parse(JSON.stringify(posCart)),
-        totalAmount: finalAmount, originalAmount: total,
+        totalAmount: finalAmount, originalAmount: originalTotal,
+        discountAmount: discountAmount, discountRate: discountRateVal,
+        couponDiscount: couponVal, bundleDiscount: bundleVal,
+        promoAmount: Math.max(0, originalTotal - total - bundleVal - couponVal),
         memberId: posMember?.id||null, memberName: posMember?.name||'',
         time: getNow(), cashier: getCashierName(),
         paymentMethod: payMethod, status: '已完成'
@@ -3565,6 +3581,35 @@ function _localSaveOrder(orderNo, finalAmount, payMethod, total) {
     saveData('financeLedger', ledger);
     // 会员数据已在服务端更新（total_spent/cumulativePoints/points/level），
     // _apiSyncAll() 会从服务器拉取正确数据，此处不再本地重复更新以免覆盖服务端正确值
+}
+
+// 去重：_localSaveOrder 和服务器同步可能产生同 orderNo 不同 ID 的重复订单
+function _dedupSalesOrders() {
+    const orders = loadData('salesOrders');
+    if (orders.length < 2) return;
+    const seen = new Map();
+    const deduped = [];
+    for (const o of orders) {
+        const existing = seen.get(o.orderNo);
+        if (!existing) {
+            seen.set(o.orderNo, o);
+            deduped.push(o);
+        } else {
+            // 保留服务器记录（数字ID）或字段更完整的记录
+            if (typeof o.id === 'number' && typeof existing.id !== 'number') {
+                deduped[deduped.indexOf(existing)] = o;
+                seen.set(o.orderNo, o);
+            } else if (typeof o.id !== 'number' && typeof existing.id === 'number') {
+                // 保留 existing（服务器记录）
+            } else if ((o.discountAmount != null) && (existing.discountAmount == null)) {
+                deduped[deduped.indexOf(existing)] = o;
+                seen.set(o.orderNo, o);
+            }
+        }
+    }
+    if (deduped.length !== orders.length) {
+        localStorage.setItem('sms_salesOrders', JSON.stringify(deduped));
+    }
 }
 
 // 本地结算（API 不可用时的降级方案）
@@ -3676,8 +3721,8 @@ pageRenderers['sales_order'] = function() {
 function init_sales_order() {
     refreshCurrentTable = () => renderTableData(loadData('salesOrders').reverse(),
         [{key:'orderNo'},{key:'items',render:o=>o.items.map(i=>`${i.name}x${i.qty}`).join(', ')},{key:'memberName',render:o=>o.memberName||'非会员'},
-         {key:'totalAmount',render:o=>'¥'+formatMoney(o.totalAmount)},
-         {key:'discountRate',render:o=>(o.discountRate||100)<100?`<span class="badge badge-warn">${o.discountRate}折</span>`:'-'},
+         {key:'totalAmount',render:o=>{var s='¥'+formatMoney(o.totalAmount);if(o.originalAmount&&o.originalAmount>o.totalAmount)s+=' <span style="font-size:0.7rem;color:#999;text-decoration:line-through;">¥'+formatMoney(o.originalAmount)+'</span>';return s;}},
+         {key:'discountRate',render:o=>{var parts=[];if(o.promoAmount>0)parts.push('促');if(o.bundleDiscount>0)parts.push('满');if(o.couponDiscount>0)parts.push('券');if((o.discountRate||100)<100)parts.push(o.discountRate+'折');return parts.length>0?`<span class="badge badge-warn">${parts.join('/')}</span>`:'-'}},
          {key:'cashier'},{key:'time'}],
         [{label:'详情',action:viewOrder},{label:'退货',action:returnOrder}],
         (item,term)=>item.orderNo.includes(term)||(item.memberName||'').includes(term)
@@ -3685,10 +3730,21 @@ function init_sales_order() {
     refreshCurrentTable();
 }
 function viewOrder(o) {
-    const memberRow = o.memberName ? `<p><strong>会员:</strong> ${o.memberName}${o.discountRate<100?` (${o.discountRate}折)`:' (无折扣)'}</p>` : '<p><strong>会员:</strong> 非会员</p>';
-    const originalRow = o.originalAmount && o.originalAmount !== o.totalAmount ? `<p><strong>原价:</strong> ¥${formatMoney(o.originalAmount)}</p>` : '';
+    const memberRow = o.memberName ? `<p><strong>会员:</strong> ${o.memberName}${(o.discountRate||100)<100?` (${o.discountRate}折)`:' (无折扣)'}</p>` : '<p><strong>会员:</strong> 非会员</p>';
+    const originalAmt = o.originalAmount || (o.items||[]).reduce((s,i)=>s+i.price*i.qty,0);
+    const hasDiscount = originalAmt > (o.totalAmount||0);
+    let discountRows = '';
+    if (hasDiscount) {
+        discountRows = `<div style="margin-top:8px;padding:8px;background:#f7faf5;border-radius:4px;font-size:0.8rem;"><strong>优惠明细:</strong><br>`;
+        discountRows += `<span>原价: ¥${formatMoney(originalAmt)}</span><br>`;
+        if (o.promoAmount > 0) discountRows += `<span>促销优惠: -¥${formatMoney(o.promoAmount)}</span><br>`;
+        if (o.bundleDiscount > 0) discountRows += `<span>满减优惠: -¥${formatMoney(o.bundleDiscount)}</span><br>`;
+        if (o.couponDiscount > 0) discountRows += `<span>代金券抵扣: -¥${formatMoney(o.couponDiscount)}</span><br>`;
+        if (o.discountAmount > 0) discountRows += `<span>会员折扣(${o.discountRate||100}折): -¥${formatMoney(o.discountAmount)}</span><br>`;
+        discountRows += `<strong>实收: ¥${formatMoney(o.totalAmount)}</strong></div>`;
+    }
     openModal('订单详情 - '+o.orderNo,
-        `<div style="font-size:0.85rem;"><p><strong>订单号:</strong> ${o.orderNo}</p><p><strong>时间:</strong> ${o.time}</p><p><strong>收银员:</strong> ${o.cashier}</p>${memberRow}${originalRow}<hr style="border-color:#edf3e7;margin:12px 0;"><table class="data-table" style="min-width:300px;"><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th></tr></thead><tbody>${o.items.map(i=>`<tr><td>${i.name}</td><td>¥${formatMoney(i.price)}</td><td>${i.qty}</td><td>¥${formatMoney(i.price*i.qty)}</td></tr>`).join('')}</tbody></table><p style="text-align:right;margin-top:12px;font-size:1.1rem;"><strong>实收: ¥${formatMoney(o.totalAmount)}</strong></p></div>`,
+        `<div style="font-size:0.85rem;"><p><strong>订单号:</strong> ${o.orderNo}</p><p><strong>时间:</strong> ${o.time}</p><p><strong>收银员:</strong> ${o.cashier}</p>${memberRow}<hr style="border-color:#edf3e7;margin:12px 0;"><table class="data-table" style="min-width:300px;"><thead><tr><th>商品</th><th>单价</th><th>数量</th><th>小计</th></tr></thead><tbody>${o.items.map(i=>`<tr><td>${i.name}</td><td>¥${formatMoney(i.price)}</td><td>${i.qty}</td><td>¥${formatMoney(i.price*i.qty)}</td></tr>`).join('')}</tbody></table>${discountRows}<p style="text-align:right;margin-top:12px;font-size:1.1rem;"><strong>实收: ¥${formatMoney(o.totalAmount)}</strong></p></div>`,
         `<button class="btn btn-outline" onclick="closeModal()">关闭</button>`);
 }
 function returnOrder(o) {

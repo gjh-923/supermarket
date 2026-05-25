@@ -1386,7 +1386,6 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
     const allPromos = db.prepare('SELECT * FROM promotions').all();
     function getActivePromoForServer(productId) {
       return allPromos.find(p => {
-        if (p.status !== 'active') return false;
         const s = new Date(p.start_date); const e = new Date(p.end_date);
         if (isNaN(s) || isNaN(e)) return false;
         e.setHours(23, 59, 59, 999);
