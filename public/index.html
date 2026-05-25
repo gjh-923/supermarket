@@ -438,13 +438,18 @@ async function _apiSyncAll() {
         const allData = await _apiGet('/api/export/all');
         for (const [key, data] of Object.entries(allData)) {
             const camelKey = _toCamelCase(key);
-            // 服务器返回空数组：保持本地数据不变
-            if (Array.isArray(data) && data.length === 0) continue;
-            // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
             let transformed = _SNAKE_CASE_TABLES.has(camelKey) ? data : _transformKeys(data);
             const existing = localStorage.getItem('sms_' + camelKey);
             let parsed = null;
             try { if (existing) parsed = JSON.parse(existing); } catch(e) {}
+            // 服务器返回空数组：只有本地也为空才跳过（否则是全部删除，需要清空本地）
+            if (Array.isArray(data) && data.length === 0) {
+                if (!parsed || (Array.isArray(parsed) && parsed.length === 0)) continue;
+                // 服务器为空但本地有数据 → 全部被其他用户删除，清空本地
+                localStorage.setItem('sms_' + camelKey, '[]');
+                continue;
+            }
+            // 服务器有数据：ID 合并（服务器数据更新同ID记录 + 补充本地没有的，本地独有的保留）
             if (Array.isArray(data) && Array.isArray(parsed) && parsed.length > 0 && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && 'id' in data[0]) {
                 // 重新读localStorage，以最新状态为基础（同步期间可能有增/删操作）
                 const latest = localStorage.getItem('sms_' + camelKey);

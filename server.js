@@ -1802,12 +1802,11 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
             }
             merged = Array.from(serverMap.values());
           } else {
+            // 客户端数据决定存在性（删除了的记录不再保留），服务器仅补充字段
             for (const row of existingRows) {
-              if (!mergedMap.has(row.id)) {
-                mergedMap.set(row.id, row); // retain server-only records from other clients
-              } else {
+              const cr = mergedMap.get(row.id);
+              if (cr) {
                 // Field-level merge: server fills missing/empty fields in client record
-                const cr = mergedMap.get(row.id);
                 for (const key of Object.keys(row)) {
                   const sv = row[key];
                   const cv = cr[key];
@@ -1816,6 +1815,7 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
                   }
                 }
               }
+              // 客户端没有的记录不再保留（已被其他客户端删除）
             }
             merged = Array.from(mergedMap.values());
           }
