@@ -3003,7 +3003,16 @@ function isPromoActive(p) {
 }
 function getActivePromosForProduct(productId, promos) {
     if (!promos) promos = loadData('promotions');
-    return promos.filter(p => isPromoActive(p) && (p.productId === 'all' || String(p.productId) === String(productId)));
+    return promos.filter(p => {
+        if (!isPromoActive(p)) return false;
+        // 兼容 productId（单数）和 productIds（复数数组）
+        if (p.productId === 'all') return true;
+        if (String(p.productId) === String(productId)) return true;
+        if (Array.isArray(p.productIds)) {
+            return p.productIds.includes('all') || p.productIds.map(String).includes(String(productId));
+        }
+        return false;
+    });
 }
 function getActivePromoPrice(product, qty, isMember) {
     // Handle 2-arg call from sales POS: (productId, originalPrice[, preloadedPromos])
@@ -3205,18 +3214,26 @@ function renderCart() {
     const itemsEl = document.getElementById('posCartItems');
     let total = 0; let count = 0;
     itemsEl.innerHTML = posCart.map((item,i)=>{
-        const subtotal = item.price*item.qty;
+        // 使用促销引擎计算此商品的实际应付金额
+        const product = loadData('products').find(p => p.id === item.productId);
+        let promoSubtotal = item.price * item.qty;
+        let promoDesc = '';
+        if (product) {
+            const result = getActivePromoPrice(product, item.qty, !!posMember);
+            promoSubtotal = result.finalPrice;
+            if (result.desc) promoDesc = result.desc;
+        }
         const originalSubtotal = (item.originalPrice||item.price)*item.qty;
-        const hasDiscount = originalSubtotal > subtotal;
-        total += subtotal; count += item.qty;
+        const hasDiscount = promoSubtotal < originalSubtotal;
+        total += promoSubtotal; count += item.qty;
         return `<div class="pos-cart-item">
-            <span>${item.name}${hasDiscount?' <span class="badge badge-warn" style="font-size:0.55rem;">促</span>':''}</span>
+            <span>${item.name}${hasDiscount?' <span class="badge badge-warn" style="font-size:0.55rem;">促</span>':''}${promoDesc?` <span style="font-size:0.55rem;color:#c23d2e;">${promoDesc}</span>`:''}</span>
             <div class="qty-ctrl">
                 <button onclick="changeQty(${i},-1)">-</button>
                 <span>${item.qty}</span>
                 <button onclick="changeQty(${i},1)">+</button>
             </div>
-            <span>${hasDiscount?`<span style="text-decoration:line-through;color:#819e73;font-size:0.65rem;">¥${formatMoney(originalSubtotal)}</span> `:''}¥${formatMoney(subtotal)}</span>
+            <span>${hasDiscount?`<span style="text-decoration:line-through;color:#819e73;font-size:0.65rem;">¥${formatMoney(originalSubtotal)}</span> `:''}¥${formatMoney(promoSubtotal)}</span>
             <span style="cursor:pointer;color:#c23d2e;" onclick="removeCartItem(${i})">✕</span>
         </div>`;
     }).join('') || '<div style="color:#819e73;text-align:center;padding:20px;">点击左侧商品添加</div>';

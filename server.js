@@ -142,8 +142,15 @@ function _syncToSqlTable(storeKey, rows) {
     const replaceAll = db.transaction((items) => {
       delStmt.run();
       for (const p of items) {
-        insStmt.run(p.id, p.name || '', p.type || '', JSON.stringify(p.productIds || p.product_ids || []),
-          JSON.stringify(p.categories || []), JSON.stringify(p.ruleJson || p.rule_json || {}),
+        const productIds = p.productIds || p.product_ids || (p.productId ? [String(p.productId)] : []);
+        const ruleJson = Object.assign({
+          discount: p.discount != null ? p.discount : 90,
+          buyQty: p.buyQty || 1,
+          freeQty: p.freeQty || 1,
+          specialPrice: p.specialPrice || 0
+        }, p.ruleJson || p.rule_json || {});
+        insStmt.run(p.id, p.name || '', p.type || '', JSON.stringify(productIds),
+          JSON.stringify(p.categories || []), JSON.stringify(ruleJson),
           p.startDate || p.start_date || '', p.endDate || p.end_date || '', p.status || 'active',
           p.description || '');
       }
@@ -240,14 +247,23 @@ function syncAffectedTablesToDataStore() {
 
   // Promotions
   const promotions = db.prepare('SELECT * FROM promotions ORDER BY id DESC').all();
-  upsert.run('promotions', JSON.stringify(promotions.map(p => ({
-    id: p.id, name: p.name, type: p.type,
-    productIds: typeof p.product_ids === 'string' ? JSON.parse(p.product_ids) : (p.product_ids || []),
-    categories: typeof p.categories === 'string' ? JSON.parse(p.categories) : (p.categories || []),
-    ruleJson: typeof p.rule_json === 'string' ? JSON.parse(p.rule_json) : (p.rule_json || {}),
-    startDate: p.start_date, endDate: p.end_date, status: p.status,
-    description: p.description
-  }))));
+  upsert.run('promotions', JSON.stringify(promotions.map(p => {
+    const pids = typeof p.product_ids === 'string' ? JSON.parse(p.product_ids) : (p.product_ids || []);
+    const rule = typeof p.rule_json === 'string' ? JSON.parse(p.rule_json) : (p.rule_json || {});
+    return {
+      id: p.id, name: p.name, type: p.type,
+      productId: Array.isArray(pids) && pids.length === 1 ? pids[0] : (pids.length > 0 ? pids[0] : 'all'),
+      productIds: pids,
+      categories: typeof p.categories === 'string' ? JSON.parse(p.categories) : (p.categories || []),
+      discount: rule.discount != null ? rule.discount : 90,
+      buyQty: rule.buyQty || 1,
+      freeQty: rule.freeQty || 1,
+      specialPrice: rule.specialPrice || 0,
+      ruleJson: rule,
+      startDate: p.start_date, endDate: p.end_date, status: p.status,
+      description: p.description
+    };
+  })));
 }
 
 // ==================== AUTH ROUTES ====================
@@ -875,7 +891,65 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
     const { cart, memberId, useCoupon, selectedCoupon, payMethod } = req.body;
     if (!cart || !Array.isArray(cart) || cart.length === 0) return res.json(err('购物车为空'));
 
+    // ===== 促销引擎（服务端） =====
+    const promoNow = new Date();
+    const allPromos = db.prepare('SELECT * FROM promotions').all();
+    function getActivePromoForServer(productId) {
+      return allPromos.find(p => {
+        if (p.status !== 'active') return false;
+        const s = new Date(p.start_date); const e = new Date(p.end_date);
+        if (isNaN(s) || isNaN(e)) return false;
+        e.setHours(23, 59, 59, 999);
+        if (promoNow < s || promoNow > e) return false;
+        let pids = [];
+        try { pids = typeof p.product_ids === 'string' ? JSON.parse(p.product_ids) : []; } catch(ex) {}
+        return pids.length === 0 || pids.includes('all') || pids.map(String).includes(String(productId));
+      });
+    }
+    function calcPromoSubtotal(product, qty) {
+      const promo = getActivePromoForServer(product.id);
+      if (!promo) return { subtotal: product.retail_price * qty, promoType: null, promoDesc: '' };
+      const basePrice = product.retail_price;
+      let rule = {};
+      try { rule = typeof promo.rule_json === 'string' ? JSON.parse(promo.rule_json) : (promo.rule_json || {}); } catch(ex) {}
+      const discount = rule.discount != null ? rule.discount : 90;
+      const buyQty = rule.buyQty || 1;
+      const freeQty = rule.freeQty || 1;
+      const specialPrice = rule.specialPrice || 0;
+      let subtotal = basePrice * qty;
+      let desc = '';
+      switch (promo.type) {
+        case 'discount': case 'flash_sale':
+          subtotal = Math.round(subtotal * discount) / 100;
+          desc = (promo.type === 'flash_sale' ? '限时秒杀' : '折扣') + ' ' + discount + '%';
+          break;
+        case 'fixed_price':
+          subtotal = specialPrice * qty;
+          desc = '特价' + specialPrice.toFixed(2) + '/件';
+          break;
+        case 'bogo':
+          { const cycle = buyQty + freeQty; const cycles = Math.floor(qty / cycle);
+            subtotal = basePrice * (qty - cycles * freeQty); desc = '买' + buyQty + '送' + freeQty; }
+          break;
+        case 'buy_n_get_m':
+          { const cycle = buyQty + freeQty; const cycles = Math.floor(qty / cycle);
+            subtotal = basePrice * (qty - cycles * freeQty); desc = '买' + buyQty + '送' + freeQty; }
+          break;
+        case 'second_half_price':
+          { const pairs = Math.floor(qty / 2); const singles = qty % 2;
+            subtotal = basePrice * singles + (basePrice + basePrice * 0.5) * pairs; desc = '第二件半价'; }
+          break;
+        case 'bundle_sale':
+          subtotal = specialPrice * qty;
+          desc = '组合特惠' + specialPrice.toFixed(2) + '/件';
+          break;
+      }
+      return { subtotal: Math.round(subtotal * 100) / 100, promoType: promo.type, promoDesc: desc };
+    }
+    // ===== 促销引擎结束 =====
+
     let totalAmount = 0;
+    let promoAmount = 0;
     const items = [];
 
     // Process each cart item
@@ -887,18 +961,22 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
         if (!product) throw new Error(`商品 ${item.name} 不存在`);
         if (product.stock < (item.qty || 1)) throw new Error(`商品 ${product.name} 库存不足 (当前: ${product.stock})`);
 
-        const price = item.price || product.retail_price;
         const qty = item.qty || 1;
-        const subtotal = price * qty;
+        const promoResult = calcPromoSubtotal(product, qty);
+        const subtotal = promoResult.subtotal;
+        const originalSubtotal = product.retail_price * qty;
+        promoAmount += (originalSubtotal - subtotal);
         totalAmount += subtotal;
 
         items.push({
           productId: product.id,
           name: product.name,
           code: product.code,
-          price: price,
+          price: product.retail_price,
           qty: qty,
-          subtotal: subtotal
+          subtotal: subtotal,
+          promoType: promoResult.promoType || null,
+          promoDesc: promoResult.promoDesc || ''
         });
 
         updateStock.run(qty, qty, product.id);
@@ -996,7 +1074,7 @@ app.post('/api/sales/checkout', authMiddleware, (req, res) => {
     // Sync affected tables to data_store for multi-user data consistency
     syncAffectedTablesToDataStore();
 
-    res.json(ok({ orderNo, totalAmount, discountAmount, couponDiscount, finalAmount, items }));
+    res.json(ok({ orderNo, totalAmount, discountAmount, couponDiscount, finalAmount, promoAmount, items }));
   } catch (e) {
     console.error('Checkout error:', e);
     res.json(err(e.message));
@@ -1106,22 +1184,38 @@ app.get('/api/promotions', (req, res) => {
 
 app.post('/api/promotions', authMiddleware, (req, res) => {
   const p = req.body;
+  const pids = p.productIds || (p.productId ? [String(p.productId)] : []);
+  const ruleJson = Object.assign({
+    discount: p.discount != null ? p.discount : 90,
+    buyQty: p.buyQty || 1,
+    freeQty: p.freeQty || 1,
+    specialPrice: p.specialPrice || 0
+  }, p.ruleJson || {});
   db.prepare(`INSERT INTO promotions (name, type, product_ids, categories, rule_json, start_date, end_date, status, description)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(p.name, p.type || '满减', JSON.stringify(p.productIds || []), JSON.stringify(p.categories || []),
-      JSON.stringify(p.ruleJson || {}), p.startDate || '', p.endDate || '', p.status || '进行中', p.description || '');
+    .run(p.name, p.type || '满减', JSON.stringify(pids), JSON.stringify(p.categories || []),
+      JSON.stringify(ruleJson), p.startDate || '', p.endDate || '', p.status || '进行中', p.description || '');
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
     .run(req.user.name, `新增促销: ${p.name}`);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('添加成功'));
 });
 
 app.put('/api/promotions/:id', authMiddleware, (req, res) => {
   const p = req.body;
+  const pids = p.productIds || (p.productId ? [String(p.productId)] : []);
+  const ruleJson = Object.assign({
+    discount: p.discount != null ? p.discount : 90,
+    buyQty: p.buyQty || 1,
+    freeQty: p.freeQty || 1,
+    specialPrice: p.specialPrice || 0
+  }, p.ruleJson || {});
   db.prepare(`UPDATE promotions SET name=?, type=?, product_ids=?, categories=?, rule_json=?, start_date=?, end_date=?, status=?, description=? WHERE id=?`)
-    .run(p.name, p.type || '满减', JSON.stringify(p.productIds || []), JSON.stringify(p.categories || []),
-      JSON.stringify(p.ruleJson || {}), p.startDate || '', p.endDate || '', p.status || '进行中', p.description || '', req.params.id);
+    .run(p.name, p.type || '满减', JSON.stringify(pids), JSON.stringify(p.categories || []),
+      JSON.stringify(ruleJson), p.startDate || '', p.endDate || '', p.status || '进行中', p.description || '', req.params.id);
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
     .run(req.user.name, `编辑促销: ${p.name}`);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('修改成功'));
 });
 
