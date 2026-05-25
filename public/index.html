@@ -535,8 +535,10 @@ function startAutoSync() {
     _syncTimer = setInterval(async () => {
         if (!_apiToken) return;
         await _apiSyncAll();
-        // 静默同步：只更新 localStorage，不刷新界面
-        // 用户自身操作通过 saveData 的 debounced sync 触发刷新
+        // 静默刷新表格数据（仅更新表格行，不重建整个页面）
+        if (_currentRefreshPage === currentPage && typeof refreshCurrentTable === 'function') {
+            try { refreshCurrentTable(); } catch(e) {}
+        }
     }, 3000);
 }
 function stopAutoSync() {
@@ -2873,8 +2875,7 @@ pageRenderers['promotion'] = function() {
     );
 };
 function init_promotion() {
-    const promotions = loadData('promotions');
-    refreshCurrentTable = () => renderTableData(promotions,
+    refreshCurrentTable = () => renderTableData(loadData('promotions'),
         [{key:'name'},
          {key:'type',render:p=>`<span class="badge badge-warn">${PROMO_TYPE_LABEL[p.type]||'折扣/百分比'}</span>`},
          {key:'productName'},
@@ -5029,8 +5030,7 @@ pageRenderers['inventory_writeoff'] = function() {
     );
 };
 function init_inventory_writeoff() {
-    const products = loadData('products').filter(p=>p.expiryDate && new Date(p.expiryDate)-new Date()< 30*24*60*60*1000);
-    refreshCurrentTable = () => renderTableData(products,
+    refreshCurrentTable = () => renderTableData(loadData('products').filter(p=>p.expiryDate && new Date(p.expiryDate)-new Date()< 30*24*60*60*1000),
         [{key:'name'},{key:'stock'},{key:'unit'},{key:'expiryDate',render:p=>{
             const diff=Math.ceil((new Date(p.expiryDate)-new Date())/(1000*60*60*24));
             if(diff<0) return `<span class="badge badge-off">已过期</span>`;
