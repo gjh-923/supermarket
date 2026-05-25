@@ -6382,8 +6382,12 @@ function saveDaySchedule(dateStr) {
         _apiSaveScheduleBatch(dateStr, shifts).catch(e => console.warn('API排班保存失败:', e.message));
     }
 }
-function clearDaySchedule(dateStr) {
+async function clearDaySchedule(dateStr) {
     if(!confirm(`确定清除 ${dateStr} 的所有排班记录吗？`)) return;
+    // 先通过服务端API删除（同时更新SQL和data_store），再更新本地
+    if (_apiToken) {
+        try { await _apiSaveScheduleBatch(dateStr, []); } catch(e) { console.warn('服务端清除排班失败:', e.message); }
+    }
     let schedules = loadData('schedules');
     schedules = schedules.filter(s=>s.date!==dateStr);
     saveData('schedules', schedules);
@@ -6392,12 +6396,20 @@ function clearDaySchedule(dateStr) {
     addLog(`清除排班: ${dateStr}`);
     showToast(`${dateStr} 排班已全部清除`);
 }
-function clearAllSchedules() {
+async function clearAllSchedules() {
     const monthStr = `${scheduleYear}-${String(scheduleMonth).padStart(2,'0')}`;
-    if(!confirm(`⚠️ 确定清除 ${scheduleYear}年${scheduleMonth}月 全部排班记录吗？\n\n此操作将删除该月所有 ${loadData('schedules').filter(s=>(s.date||'').startsWith(monthStr)).length} 条排班记录，不可恢复！`)) return;
-    let schedules = loadData('schedules');
-    schedules = schedules.filter(s => !(s.date || '').startsWith(monthStr));
-    saveData('schedules', schedules);
+    const schedules = loadData('schedules');
+    const monthSchedules = schedules.filter(s=>(s.date||'').startsWith(monthStr));
+    if(!confirm(`⚠️ 确定清除 ${scheduleYear}年${scheduleMonth}月 全部排班记录吗？\n\n此操作将删除该月所有 ${monthSchedules.length} 条排班记录，不可恢复！`)) return;
+    // 先通过服务端API逐日删除（同时更新SQL和data_store）
+    if (_apiToken) {
+        const dates = [...new Set(monthSchedules.map(s=>s.date))];
+        for (const d of dates) {
+            try { await _apiSaveScheduleBatch(d, []); } catch(e) { console.warn('服务端清除排班失败:', d, e.message); }
+        }
+    }
+    const filtered = schedules.filter(s => !(s.date || '').startsWith(monthStr));
+    saveData('schedules', filtered);
     navigateTo('employee_schedule');
     addLog(`清除全部排班: ${monthStr}`);
     showToast(`${monthStr} 全部排班已清除`);

@@ -104,6 +104,18 @@ function _syncToSqlTable(storeKey, rows) {
     // categories 仅存 data_store，无对应 SQL 表结构需要同步
   }
 
+  if (storeKey === 'schedules') {
+    const delStmt = db.prepare('DELETE FROM schedules');
+    const insStmt = db.prepare('INSERT INTO schedules (id, employee_id, employee_name, date, shift) VALUES (?, ?, ?, ?, ?)');
+    const replaceAll = db.transaction((items) => {
+      delStmt.run();
+      for (const s of items) {
+        insStmt.run(s.id, s.employee_id || s.employeeId || '', s.employee_name || s.employeeName || '', s.date || '', s.shift || '早班');
+      }
+    });
+    replaceAll(rows);
+  }
+
   if (storeKey === 'salesOrders') {
     const stmt = db.prepare(`INSERT OR REPLACE INTO sales_orders
       (id, order_no, member_id, member_name, member_phone, items, total_amount, discount_amount, final_amount, coupon_id, coupon_name, coupon_discount, pay_method, operator, order_date)
@@ -200,6 +212,13 @@ function syncAffectedTablesToDataStore() {
   const logs = db.prepare('SELECT * FROM system_logs ORDER BY id DESC').all();
   upsert.run('systemLogs', JSON.stringify(logs.map(l => ({
     id: l.id, time: l.time, user: l.user, action: l.action
+  }))));
+
+  // Schedules
+  const schedules = db.prepare('SELECT * FROM schedules ORDER BY date, id').all();
+  upsert.run('schedules', JSON.stringify(schedules.map(s => ({
+    id: s.id, employee_id: s.employee_id, employee_name: s.employee_name,
+    date: s.date, shift: s.shift
   }))));
 }
 
@@ -741,6 +760,7 @@ app.post('/api/schedules/batch', authMiddleware, (req, res) => {
     }
   });
   insertMany(shifts);
+  syncAffectedTablesToDataStore();
   db.prepare(`INSERT INTO system_logs (time, user, action) VALUES (datetime('now','localtime'), ?, ?)`)
     .run(req.user.name, `排班: ${dateStr}`);
   res.json(okMsg('排班保存成功'));
@@ -748,6 +768,7 @@ app.post('/api/schedules/batch', authMiddleware, (req, res) => {
 
 app.delete('/api/schedules/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM schedules WHERE id = ?').run(req.params.id);
+  syncAffectedTablesToDataStore();
   res.json(okMsg('删除成功'));
 });
 
