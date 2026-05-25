@@ -3557,8 +3557,13 @@ function checkout() {
     const activePromos = loadData('promotions');
     _apiCheckout(cartForApi, posMember?.id||null, useCoupon, actualCouponDiscount, couponCost, bundleDiscount, payMethod, activePromos).then(async result => {
         console.log('API结算成功:', result.orderNo);
-        const paidAmount = result.finalAmount || finalAmount;
-        showToast(`结算成功！金额: ¥${formatMoney(paidAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
+        // 以用户确认的金额为准，服务端金额仅做校验
+        const serverFinal = result.finalAmount;
+        const paidAmount = finalAmount;  // 与确认框实付保持一致
+        if (Math.abs(serverFinal - paidAmount) > 0.01) {
+            console.warn('服务端实付金额与客户端不一致:', {server: serverFinal, client: paidAmount});
+        }
+        showToast(`结算成功！实付: ¥${formatMoney(paidAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
         // Save order locally using server's orderNo so reports see it immediately
         _localSaveOrder(result.orderNo, paidAmount, payMethod, total, discountRate, actualCouponDiscount, bundleDiscount);
         // Update local member stats immediately to match server
@@ -3772,7 +3777,7 @@ function localCheckout(finalAmount, total, actualCouponDiscount, bundleDiscount,
             saveData('members', members);
         }
     }
-    showToast(`结算成功！金额: ¥${formatMoney(finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
+    showToast(`结算成功！实付: ¥${formatMoney(finalAmount)}${posMember?' | 会员:'+posMember.name:''}${actualCouponDiscount>0?' | 代金券抵扣:¥'+formatMoney(actualCouponDiscount):''}`);
     posCart = [];
     posMember = null;
     const phoneInput = document.getElementById('posMemberPhone');
