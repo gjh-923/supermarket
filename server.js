@@ -1648,6 +1648,16 @@ app.post('/api/sync/:key', authMiddleware, (req, res) => {
           for (const row of existingRows) {
             if (!mergedMap.has(row.id)) {
               mergedMap.set(row.id, row); // retain server-only records from other clients
+            } else {
+              // Field-level merge: server fills missing/empty fields in client record
+              const cr = mergedMap.get(row.id);
+              for (const key of Object.keys(row)) {
+                const sv = row[key];
+                const cv = cr[key];
+                if (sv != null && (cv == null || cv === '' || (Array.isArray(cv) && cv.length === 0))) {
+                  cr[key] = sv;
+                }
+              }
             }
           }
           merged = Array.from(mergedMap.values());
