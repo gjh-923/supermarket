@@ -3959,25 +3959,30 @@ function updateMemberStats() {
     document.getElementById('statMemFrozen').textContent = frozen;
 }
 function init_member() {
+    var diagMsgs = [];
+    var lvls = loadData('memberLevels');
+    diagMsgs.push('等级数:' + lvls.length + ' ' + lvls.map(function(l){return l.name+'('+l.minSpent+')';}).join(','));
     autoMatchAllMemberLevels();
     refreshCurrentTable = () => {
         // 渲染前强制重算全部会员等级（最后一次保障）
         const allMembers = loadData('members');
-        const lvls = loadData('memberLevels');
+        const lvls2 = loadData('memberLevels');
         let fixedCount = 0;
-        if (lvls.length) {
-            const sorted = [...lvls].sort((a,b)=>b.minSpent-a.minSpent);
+        if (lvls2.length) {
+            const sorted = [...lvls2].sort((a,b)=>b.minSpent-a.minSpent);
             allMembers.forEach(m => {
                 const spent = Number(m.totalSpent) || 0;
                 for (const lv of sorted) {
                     if (spent >= (Number(lv.minSpent) || 0)) {
-                        if (m.level !== lv.name) { m.level = lv.name; fixedCount++; }
+                        if (m.level !== lv.name) { m.level = lv.name; fixedCount++; diagMsgs.push(m.name+':'+m.totalSpent+'→'+lv.name); }
                         break;
                     }
                 }
             });
-            if (fixedCount > 0) { saveData('members', allMembers); showToast(`已自动修正 ${fixedCount} 位会员的等级`); }
+            if (fixedCount > 0) { saveData('members', allMembers); }
         }
+        diagMsgs.push('修正:' + fixedCount + '人');
+        showToast('会员页诊断: ' + diagMsgs.join(' | '), 5000);
         let data = allMembers;
         if (currentMemberStatusFilter !== '全部') {
             data = data.filter(m=>(m.status||'正常')===currentMemberStatusFilter);
