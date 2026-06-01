@@ -2960,7 +2960,7 @@ function init_promotion() {
             return '<span class="badge badge-on">进行中</span>';
         }}],
         [{label:'编辑',action:editPromotion},{label:'删除',action:deletePromotion}],
-        (item,term)=>item.name.includes(term)||(item.productName||'').includes(term)
+        (item,term)=>item.name.includes(term)
     );
     refreshCurrentTable();
 }
