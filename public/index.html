@@ -8274,14 +8274,14 @@ pageRenderers['system_settings_mgmt'] = function() {
 pageRenderers['system_users'] = function() {
     return renderTablePage('用户管理', '系统管理 / 用户管理',
         ['用户名','姓名','角色','所属部门','状态','创建时间'],
-        Object.entries(USERS).map(([k,v])=>({username:k,name:v.name,role:v.role,roleName:ROLES[v.role].name,dept:'技术运维部',status:'正常',createTime:'2024-01-01'})),
+        Object.entries(USERS).map(([k,v])=>({username:k,name:v.name,role:v.role,roleName:ROLES[v.role].name,dept:'技术运维部',status:'正常',createTime:getToday()})),
         [{label:'查看权限',action:viewUserPerms},{label:'编辑',action:editUser},{label:'重置密码',action:resetUserPwd}],
         `<button class="btn btn-primary" onclick="addUser()">新增用户</button>`,
         '搜索用户名或姓名'
     );
 };
 function init_system_users() {
-    const users = Object.entries(USERS).map(([k,v])=>({username:k,name:v.name,role:v.role,roleName:ROLES[v.role].name,dept:'技术运维部',status:'正常',createTime:'2024-01-01'}));
+    const users = Object.entries(USERS).map(([k,v])=>({username:k,name:v.name,role:v.role,roleName:ROLES[v.role].name,dept:'技术运维部',status:'正常',createTime:getToday()}));
     refreshCurrentTable = () => renderTableData(users,
         [{key:'username'},{key:'name'},{key:'roleName'},{key:'dept'},{key:'status',render:u=>`<span class="badge badge-on">${u.status}</span>`},{key:'createTime'}],
         [{label:'查看权限',action:viewUserPerms},{label:'编辑',action:editUser},{label:'重置密码',action:resetUserPwd}],
