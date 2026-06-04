@@ -7972,7 +7972,7 @@ pageRenderers['system_user_mgmt'] = function() {
             {page:'system_dept',icon:'🏢',name:'部门管理',desc:'维护组织部门结构、负责人信息',stat:depts+'个部门'},
             {page:'system_post',icon:'📋',name:'系统岗位',desc:'管理系统级岗位及权限分配',stat:posts+'个岗位'},
             {page:'system_menu',icon:'📁',name:'菜单管理',desc:'配置系统菜单树、排序及可见性',stat:menus+'个菜单'}
-        ].map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')"><div class="sys-card-icon">${c.icon}</div><div class="sys-card-name">${c.name}</div><div class="sys-card-desc">${c.desc}</div><div style="font-size:0.7rem;color:#2c7840;font-weight:600;">${c.stat}</div></div>`).join('')}</div>
+        .filter(c=>c.page!=="system_roles"&&c.page!=="system_dept"&&c.page!=="system_post"&&c.page!=="system_menu")].map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')"><div class="sys-card-icon">${c.icon}</div><div class="sys-card-name">${c.name}</div><div class="sys-card-desc">${c.desc}</div><div style="font-size:0.7rem;color:#2c7840;font-weight:600;">${c.stat}</div></div>`).join('')}</div>
     </div></div>`;
 };
 // -- 系统日志管理(汇总) --
@@ -8267,7 +8267,7 @@ pageRenderers['system_settings_mgmt'] = function() {
             {page:'system_params',icon:'🔧',name:'参数设置',desc:'系统运行参数：备份策略、登录限制、预警阈值等',stat:params+'个参数'},
             {page:'system_dict',icon:'📖',name:'字典管理',desc:'枚举值、状态码、类型标签等基础字典数据维护',stat:dicts+'条字典'},
             {page:'system_notice',icon:'📢',name:'通知公告',desc:'发布系统通知、部门公告，支持优先级和状态管理',stat:notices+'条公告'}
-        ].map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')"><div class="sys-card-icon">${c.icon}</div><div class="sys-card-name">${c.name}</div><div class="sys-card-desc">${c.desc}</div>${c.stat?`<div style="font-size:0.7rem;color:#2c7840;font-weight:600;">${c.stat}</div>`:''}</div>`).join('')}</div>
+        .filter(c=>c.page!=="system_settings")].map(c=>`<div class="sys-card fade-in" onclick="navigateTo('${c.page}')"><div class="sys-card-icon">${c.icon}</div><div class="sys-card-name">${c.name}</div><div class="sys-card-desc">${c.desc}</div>${c.stat?`<div style="font-size:0.7rem;color:#2c7840;font-weight:600;">${c.stat}</div>`:''}</div>`).join('')}</div>
     </div></div>`;
 };
 // -- 用户管理 --
